@@ -108,3 +108,13 @@ export interface CommandHistoryItem {
   result: string;
   timestamp: string;
 }
+
+export interface DiagnosticEntry {
+  id: string;
+  timestamp: string;
+  transcript: string;
+  intent: string;
+  targetOrQuery: string;
+  appFound?: string;
+  launchResult: string;
+}

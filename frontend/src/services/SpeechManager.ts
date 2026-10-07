@@ -9,6 +9,7 @@ class SpeechManager {
   private isSpeakingState: boolean = false;
   private voicesLoaded: boolean = false;
   private safetyTimeout: any = null;
+  private activeUtterance: SpeechSynthesisUtterance | null = null;
 
   // Known Male Voice Names in macOS, Chrome, Safari, Edge
   private preferredMaleNames: string[] = [
@@ -140,10 +141,13 @@ class SpeechManager {
       utterance.voice = voice;
     }
 
+    this.activeUtterance = utterance;
+
     let finished = false;
     const handleFinish = () => {
       if (finished) return;
       finished = true;
+      this.activeUtterance = null;
       if (this.safetyTimeout) {
         clearTimeout(this.safetyTimeout);
         this.safetyTimeout = null;
@@ -172,6 +176,9 @@ class SpeechManager {
     }, estimatedDuration);
 
     this.isSpeakingState = true;
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
     window.speechSynthesis.speak(utterance);
   }
 }

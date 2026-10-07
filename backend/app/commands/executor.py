@@ -1,36 +1,24 @@
+"""
+Universal Command Executor Service
+Executes validated applications, YouTube media/search, system operations, and AI chat.
+"""
+
 import subprocess
 import platform
 import os
 import shutil
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from backend.app.config import settings, DATA_DIR
 from backend.app.database import get_db
 from backend.app.commands.security import classify_command, SecurityLevel
+from backend.app.commands.app_resolver import app_resolver
+from backend.app.commands.youtube_service import youtube_service
+from backend.app.system.monitor import system_monitor
 
 SCREENSHOTS_DIR = DATA_DIR / "screenshots"
 SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
-
-APP_MAP_MACOS = {
-    "chrome": "Google Chrome",
-    "google chrome": "Google Chrome",
-    "vs code": "Visual Studio Code",
-    "vscode": "Visual Studio Code",
-    "visual studio code": "Visual Studio Code",
-    "code": "Visual Studio Code",
-    "safari": "Safari",
-    "terminal": "Terminal",
-    "iterm": "iTerm",
-    "notes": "Notes",
-    "calendar": "Calendar",
-    "calculator": "Calculator",
-    "spotify": "Spotify",
-    "finder": "Finder",
-    "mail": "Mail",
-    "slack": "Slack",
-    "discord": "Discord"
-}
 
 class CommandExecutor:
     def __init__(self):
@@ -47,118 +35,119 @@ class CommandExecutor:
             conn.commit()
             conn.close()
         except Exception as e:
-            print("Failed to record command in DB:", e)
+            pass
 
+    def executeOpenApplication(self, target: str) -> Dict[str, Any]:
+        """
+        Executes launching of any validated application on macOS.
+        Uses ApplicationResolver for dynamic discovery.
+        """
+        res = app_resolver.launch(target)
+        status = "COMPLETED" if res["success"] else ("NOT_INSTALLED" if res.get("not_installed") else "FAILED")
+        self.record_command(f"Open {target}", "open_app", SecurityLevel.SAFE, status, res["message"])
+        return {
+            "success": res["success"],
+            "not_installed": res.get("not_installed", False),
+            "app_name": res.get("app_name", target),
+            "path": res.get("path"),
+            "message": res["message"]
+        }
+
+    def executeYouTubeSearch(self, query: str) -> Dict[str, Any]:
+        """Executes a YouTube search query."""
+        res = youtube_service.search(query)
+        status = "COMPLETED" if res["success"] else "FAILED"
+        self.record_command(f"YouTube Search: {query}", "youtube_search", SecurityLevel.SAFE, status, res["message"])
+        return {
+            "success": res["success"],
+            "query": res["query"],
+            "url": res["url"],
+            "message": res["message"]
+        }
+
+    def executeYouTubeMedia(self, query: str, mediaType: str = "MUSIC") -> Dict[str, Any]:
+        """Executes YouTube media playback for songs, movie songs, comedy, or videos."""
+        res = youtube_service.play(query, media_type=mediaType)
+        status = "COMPLETED" if res["success"] else "FAILED"
+        self.record_command(f"YouTube Media ({mediaType}): {query}", "youtube_media", SecurityLevel.SAFE, status, res["message"])
+        return {
+            "success": res["success"],
+            "query": res["query"],
+            "url": res["url"],
+            "mediaType": mediaType,
+            "message": res["message"]
+        }
+
+    def executeSystemCommand(self, cmd_type: str) -> Dict[str, Any]:
+        """Executes safe system status or diagnostics."""
+        metrics = system_monitor.get_current_metrics()
+        if cmd_type == "cpu":
+            msg = f"Your CPU is currently at {metrics['cpu_percent']} percent, Boss."
+        elif cmd_type == "battery":
+            msg = f"Battery is at {metrics['battery']['percent']} percent and {metrics['battery']['status'].lower()}, Boss."
+        elif cmd_type == "ram" or cmd_type == "memory":
+            msg = f"Memory usage is {metrics['memory_percent']} percent ({metrics['memory_used_gb']} GB of {metrics['memory_total_gb']} GB), Boss."
+        else:
+            msg = (
+                f"CPU is at {metrics['cpu_percent']} percent, "
+                f"memory usage is {metrics['memory_percent']} percent, and "
+                f"battery is at {metrics['battery']['percent']} percent, Boss."
+            )
+        return {
+            "success": True,
+            "metrics": metrics,
+            "message": msg
+        }
+
+    def executeGeneralChat(self, prompt: str) -> Dict[str, Any]:
+        """Fallback for general conversation or technical explanations."""
+        return {
+            "success": True,
+            "prompt": prompt,
+            "message": "Standing by for your directive, Boss."
+        }
+
+    # Backward compatibility helpers
     def open_app(self, app_name: str) -> Dict[str, Any]:
-        clean_name = app_name.strip().lower()
-        target = APP_MAP_MACOS.get(clean_name, app_name)
-        
-        sec_level, reason = classify_command(f"open app {target}", "open_app")
-        if sec_level == SecurityLevel.BLOCKED:
-            self.record_command(f"Open {target}", "open_app", sec_level, "BLOCKED", reason)
-            return {"success": False, "security": sec_level, "message": reason}
-
-        try:
-            if self.os_type == "Darwin":
-                subprocess.Popen(["open", "-a", target])
-            elif self.os_type == "Windows":
-                subprocess.Popen(["start", target], shell=True)
-            else:
-                subprocess.Popen([target])
-
-            msg = f"Opening {target}."
-            self.record_command(f"Open {target}", "open_app", sec_level, "COMPLETED", msg)
-            return {"success": True, "security": sec_level, "message": msg, "app": target}
-        except Exception as e:
-            err = f"Could not open {target}: {str(e)}"
-            self.record_command(f"Open {target}", "open_app", sec_level, "FAILED", err)
-            return {"success": False, "security": sec_level, "message": err}
+        return self.executeOpenApplication(app_name)
 
     def close_app(self, app_name: str) -> Dict[str, Any]:
-        clean_name = app_name.strip().lower()
-        target = APP_MAP_MACOS.get(clean_name, app_name)
-
-        sec_level, reason = classify_command(f"close app {target}", "close_app")
-        try:
-            if self.os_type == "Darwin":
-                subprocess.run(["osascript", "-e", f'quit app "{target}"'], check=True)
-            elif self.os_type == "Windows":
-                subprocess.run(["taskkill", "/IM", f"{target}.exe", "/F"], check=True)
-            else:
-                subprocess.run(["pkill", "-f", target], check=True)
-
-            msg = f"Closed {target}."
-            self.record_command(f"Close {target}", "close_app", sec_level, "COMPLETED", msg)
-            return {"success": True, "message": msg}
-        except Exception as e:
-            err = f"Could not close {target}."
-            self.record_command(f"Close {target}", "close_app", sec_level, "FAILED", str(e))
-            return {"success": False, "message": err}
+        return app_resolver.close(app_name)
 
     def open_url(self, url: str) -> Dict[str, Any]:
-        if not (url.startswith("http://") or url.startswith("https://")):
-            url = "https://" + url
+        opened = youtube_service._open_in_browser(url)
+        return {"success": opened, "message": f"Opened {url}." if opened else "Failed to open URL."}
 
-        sec_level, reason = classify_command(url, "open_url")
-        try:
-            if self.os_type == "Darwin":
-                subprocess.Popen(["open", url])
-            elif self.os_type == "Windows":
-                os.startfile(url)
-            else:
-                subprocess.Popen(["xdg-open", url])
-
-            msg = f"Opening {url}."
-            self.record_command(f"Open URL {url}", "open_url", sec_level, "COMPLETED", msg)
-            return {"success": True, "message": msg, "url": url}
-        except Exception as e:
-            err = f"Failed to open URL: {str(e)}"
-            self.record_command(f"Open URL {url}", "open_url", sec_level, "FAILED", err)
-            return {"success": False, "message": err}
-
-    def open_folder(self, folder_path: str) -> Dict[str, Any]:
-        path = Path(folder_path).expanduser().resolve()
-        if not path.exists():
-            return {"success": False, "message": f"Folder {folder_path} does not exist."}
-
-        sec_level, reason = classify_command(str(path), "open_folder")
-        try:
-            if self.os_type == "Darwin":
-                subprocess.Popen(["open", str(path)])
-            elif self.os_type == "Windows":
-                os.startfile(str(path))
-            else:
-                subprocess.Popen(["xdg-open", str(path)])
-
-            msg = f"Opening folder {path.name}."
-            self.record_command(f"Open folder {path}", "open_folder", sec_level, "COMPLETED", msg)
-            return {"success": True, "message": msg}
-        except Exception as e:
-            return {"success": False, "message": str(e)}
-
-    def take_screenshot(self) -> Dict[str, Any]:
-        filename = f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+    def capture_screen(self) -> Dict[str, Any]:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"screenshot_{timestamp}.png"
         filepath = SCREENSHOTS_DIR / filename
-        
         try:
             if self.os_type == "Darwin":
                 subprocess.run(["screencapture", "-x", str(filepath)], check=True)
+            elif self.os_type == "Linux":
+                subprocess.run(["scrot", str(filepath)], check=True)
             else:
-                from PIL import ImageGrab
-                img = ImageGrab.grab()
-                img.save(str(filepath))
-
-            msg = f"Screenshot captured successfully."
-            self.record_command("Take screenshot", "screenshot", SecurityLevel.SAFE, "COMPLETED", msg)
-            return {
-                "success": True,
-                "message": msg,
-                "filepath": str(filepath),
-                "filename": filename
-            }
+                return {"success": False, "message": "Screen capture not supported on this OS."}
+            return {"success": True, "filepath": str(filepath), "filename": filename, "message": "Screen captured, Boss."}
         except Exception as e:
-            err = f"Screenshot capture failed: {str(e)}"
-            self.record_command("Take screenshot", "screenshot", SecurityLevel.SAFE, "FAILED", err)
-            return {"success": False, "message": err}
+            return {"success": False, "message": f"Screen capture failed: {str(e)}"}
+
+    def execute_shell(self, command: str, confirmed: bool = False) -> Dict[str, Any]:
+        sec_level, reason = classify_command(command, "shell")
+        if sec_level == SecurityLevel.BLOCKED:
+            self.record_command(command, "shell", sec_level, "BLOCKED", reason)
+            return {"success": False, "security": sec_level, "message": f"Blocked: {reason}"}
+        if sec_level == SecurityLevel.CONFIRMATION_REQUIRED and not confirmed:
+            return {"success": False, "security": sec_level, "message": reason, "confirmation_required": True}
+        try:
+            res = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=10)
+            output = res.stdout if res.returncode == 0 else res.stderr
+            status = "COMPLETED" if res.returncode == 0 else "FAILED"
+            self.record_command(command, "shell", sec_level, status, output[:200])
+            return {"success": res.returncode == 0, "security": sec_level, "output": output.strip(), "message": "Command executed, Boss."}
+        except Exception as e:
+            self.record_command(command, "shell", sec_level, "FAILED", str(e))
+            return {"success": False, "security": sec_level, "message": f"Execution error: {str(e)}"}
 
 command_executor = CommandExecutor()

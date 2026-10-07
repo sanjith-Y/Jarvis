@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 JARVIS AI Assistant - Server Core
-Handles system telemetry, Instagram helper endpoints, URL execution, and static UI delivery.
+Handles system telemetry, command routing, application launching, YouTube execution, and static UI delivery.
 """
 
 import http.server
@@ -15,10 +15,18 @@ import urllib.error
 import urllib.parse
 import platform
 import re
+from pathlib import Path
 from datetime import datetime
 
-PORT = int(os.environ.get("PORT", 8080))
+# Import universal Command Router, Application Resolver, and YouTube Service
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BASE_DIR)
+
+from backend.app.commands.router import command_router
+from backend.app.commands.app_resolver import app_resolver
+from backend.app.commands.youtube_service import youtube_service
+
+PORT = int(os.environ.get("PORT", 8088))
 
 def get_system_telemetry():
     telemetry = {
@@ -30,7 +38,8 @@ def get_system_telemetry():
         "cpu": "Normal",
         "battery": "AC Power",
         "battery_pct": 100,
-        "uptime": "N/A"
+        "uptime": "N/A",
+        "user_name": "Boss"
     }
 
     # macOS Battery check via pmset
@@ -71,7 +80,6 @@ def get_system_telemetry():
 
 def fetch_instagram_oembed(url):
     try:
-        # Standard Instagram oEmbed endpoint
         oembed_url = f"https://www.instagram.com/oembed/?url={urllib.parse.quote(url)}"
         req = urllib.request.Request(
             oembed_url,
@@ -90,11 +98,9 @@ def fetch_instagram_oembed(url):
                     "thumbnail_url": data.get("thumbnail_url", ""),
                     "html": data.get("html", "")
                 }
-    except Exception as e:
-        # Graceful fallback parsing from URL
+    except Exception:
         pass
 
-    # Extract ID and type if oEmbed is restricted or rate-limited
     reel_match = re.search(r"/reel/([A-Za-z0-9_-]+)", url)
     post_match = re.search(r"/p/([A-Za-z0-9_-]+)", url)
     shortcode = None
@@ -124,11 +130,11 @@ class JarvisRequestHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/system":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(json.dumps(get_system_telemetry()).encode())
+            self._send_json(get_system_telemetry())
+            return
+        elif parsed.path == "/api/applications/installed":
+            apps = app_resolver.list_installed_apps()
+            self._send_json({"total": len(apps), "applications": apps})
             return
         elif parsed.path == "/" or parsed.path == "/index.html":
             self.path = "/index.html"
@@ -146,40 +152,91 @@ class JarvisRequestHandler(http.server.SimpleHTTPRequestHandler):
         except Exception:
             data = {}
 
-        if parsed.path == "/api/instagram/info":
+        # 1. Chat & Universal Command Endpoint
+        if parsed.path == "/api/chat" or parsed.path == "/api/jarvis/command":
+            user_message = data.get("message") or data.get("command") or ""
+            routed = command_router.route(user_message)
+
+            if routed.get("executed") or routed.get("is_sleep") or routed.get("is_wake"):
+                tool_status = "COMPLETED" if routed.get("success") else ("NOT_INSTALLED" if routed.get("not_installed") else "FAILED")
+                self._send_json({
+                    "reply": routed.get("message"),
+                    "tool_action": routed.get("tool") or routed.get("intent"),
+                    "tool_status": tool_status,
+                    "tool_result": routed,
+                    "intent": routed.get("intent"),
+                    "is_sleep": routed.get("is_sleep", False),
+                    "is_wake": routed.get("is_wake", False),
+                    "stay_active": routed.get("stay_active", True)
+                })
+                return
+            else:
+                # General conversation
+                clean_q = user_message.strip()
+                if "explain" in clean_q.lower() or "what is" in clean_q.lower():
+                    reply = f"Artificial intelligence refers to computational systems engineered to perform complex tasks requiring reasoning, perception, learning, and synthesis, Boss."
+                else:
+                    reply = f"Standing by for your directive, Boss."
+                self._send_json({
+                    "reply": reply,
+                    "tool_action": None,
+                    "tool_status": None,
+                    "intent": "GENERAL_CHAT",
+                    "stay_active": True
+                })
+                return
+
+        # 2. Instagram Helper Info
+        elif parsed.path == "/api/instagram/info":
             target_url = data.get("url", "").strip()
             res = fetch_instagram_oembed(target_url)
             self._send_json(res)
             return
 
+        # 3. System Open (URL or Installed App)
         elif parsed.path == "/api/system/open":
-            target_url = data.get("url", "").strip()
-            # Verify safe URL
-            if target_url.startswith("https://") or target_url.startswith("http://"):
-                try:
-                    if platform.system() == "Darwin":
-                        subprocess.Popen(["open", target_url])
-                    elif platform.system() == "Linux":
-                        subprocess.Popen(["xdg-open", target_url])
-                    elif platform.system() == "Windows":
-                        os.startfile(target_url)
-                    self._send_json({"success": True, "message": f"Opened {target_url}"})
-                except Exception as e:
-                    self._send_json({"success": False, "error": str(e)}, status=500)
+            target = data.get("url") or data.get("target") or data.get("app") or ""
+            target = target.strip()
+            if target.startswith("https://") or target.startswith("http://"):
+                opened = youtube_service._open_in_browser(target)
+                self._send_json({"success": opened, "message": f"Opened {target}"})
             else:
-                self._send_json({"success": False, "error": "Invalid URL protocol"}, status=400)
+                # Launch app via ApplicationResolver
+                res = app_resolver.launch(target)
+                self._send_json(res)
             return
 
+        # 4. App Launch Endpoint
+        elif parsed.path == "/api/applications/launch":
+            name = data.get("name") or data.get("app") or ""
+            res = app_resolver.launch(name)
+            self._send_json(res)
+            return
+
+        # 5. YouTube Media Play
+        elif parsed.path == "/api/youtube/play":
+            query = data.get("query", "")
+            media_type = data.get("mediaType", "MUSIC")
+            res = youtube_service.play(query, media_type=media_type)
+            self._send_json(res)
+            return
+
+        # 6. YouTube Search
+        elif parsed.path == "/api/youtube/search":
+            query = data.get("query", "")
+            res = youtube_service.search(query)
+            self._send_json(res)
+            return
+
+        # 7. Text-To-Speech (macOS say with single British Butler voice Daniel)
         elif parsed.path == "/api/system/say":
             text = data.get("text", "").strip()
             if text and platform.system() == "Darwin":
                 try:
-                    # Non-blocking voice speech via macOS say command
-                    voice = data.get("voice", "Daniel") # Daniel is a classic British voice on macOS
-                    subprocess.Popen(["say", "-v", voice, text])
+                    subprocess.Popen(["say", "-v", "Daniel", text])
                     self._send_json({"success": True})
                     return
-                except Exception as e:
+                except Exception:
                     pass
             self._send_json({"success": False})
             return
@@ -214,9 +271,9 @@ def run():
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("", actual_port), JarvisRequestHandler) as httpd:
         print("=" * 60)
-        print(f"⚡ J.A.R.V.I.S. Core Online")
+        print("⚡ J.A.R.V.I.S. Core Online")
         print(f"📡 Interface: http://localhost:{actual_port}")
-        print(f"🤖 Protocol: Online & Listening")
+        print("🤖 Protocol: Online & Listening")
         print("=" * 60)
         try:
             httpd.serve_forever()

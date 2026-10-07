@@ -12,7 +12,7 @@ import { AutomationPage } from './pages/AutomationPage';
 import { RemindersPage } from './pages/RemindersPage';
 import { SettingsPage } from './pages/SettingsPage';
 
-import { JarvisState, ChatMessage, SystemMetrics } from './types';
+import { JarvisState, ChatMessage, SystemMetrics, DiagnosticEntry } from './types';
 import { api } from './services/api';
 import { speechManager } from './services/SpeechManager';
 
@@ -21,6 +21,7 @@ export const App: React.FC = () => {
   const [jarvisState, setJarvisState] = useState<JarvisState>('SLEEPING');
   const [sessionActive, setSessionActive] = useState<boolean>(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticEntry[]>([]);
   const [metrics, setMetrics] = useState<SystemMetrics | undefined>();
   const [unreadCount, setUnreadCount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
@@ -286,7 +287,7 @@ export const App: React.FC = () => {
   };
 
   // 6. Manual Session Toggle Button
-  const toggleVoice = () => {
+  const toggleVoice = async () => {
     if (!recognitionRef.current) {
       alert("Speech recognition not supported in this browser. Please use Chrome, Edge, or Safari.");
       return;
@@ -301,11 +302,23 @@ export const App: React.FC = () => {
         setJarvisState('SLEEPING');
       });
     } else {
-      // Activate session -> LISTENING
+      // 1. Explicitly request microphone access if needed
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream.getTracks().forEach(t => t.stop());
+        }
+      } catch (e) {
+        console.warn("Microphone access prompt:", e);
+      }
+
+      // 2. Activate session -> LISTENING
       setSessionActive(true);
       sessionActiveRef.current = true;
       setJarvisState('ACTIVATING');
-      speakResponse(`JARVIS is online. I'm listening, ${userName}.`, () => {
+
+      // 3. Spoken greeting: "JARVIS online. I'm listening, Boss."
+      speakResponse(`JARVIS online. I'm listening, ${userName}.`, () => {
         if (sessionActiveRef.current) {
           setJarvisState('LISTENING');
           startListening();
@@ -334,6 +347,22 @@ export const App: React.FC = () => {
     try {
       const res = await api.sendMessage(text.trim());
       isProcessingRef.current = false;
+
+      // Record diagnostic entry (Requirement 35)
+      const isApp = res.intent === 'OPEN_APPLICATION';
+      const appFound = isApp ? (res.tool_result?.not_installed ? 'NO' : 'YES') : (res.tool_result ? 'YES' : 'N/A');
+      const launchResult = res.tool_result?.not_installed ? 'NOT_INSTALLED' : (res.tool_status === 'FAILED' ? 'FAILURE' : 'SUCCESS');
+
+      const diagEntry: DiagnosticEntry = {
+        id: Date.now().toString(),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        transcript: text,
+        intent: res.intent || res.tool_action || "GENERAL_CHAT",
+        targetOrQuery: res.tool_result?.app_name || res.tool_result?.query || res.tool_result?.url || text,
+        appFound: appFound,
+        launchResult: launchResult
+      };
+      setDiagnostics((prev) => [diagEntry, ...prev.slice(0, 24)]);
 
       if (res.tool_status === 'CONFIRMATION_REQUIRED') {
         setConfirmModal({
@@ -466,6 +495,7 @@ export const App: React.FC = () => {
               jarvisState={jarvisState}
               sessionActive={sessionActive}
               messages={messages}
+              diagnostics={diagnostics}
               onSendMessage={handleSendMessage}
               isListening={isListening}
               onToggleVoice={toggleVoice}

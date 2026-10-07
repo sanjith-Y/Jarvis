@@ -1,6 +1,6 @@
 /**
  * JARVIS Main Application Coordinator
- * Binds UI, Voice, Audio, System Telemetry, Weather, and Instagram Suite together.
+ * Connects Voice Engine, AI Command Engine, Diagnostic Logging, and State Management.
  */
 
 class JarvisApplication {
@@ -12,43 +12,36 @@ class JarvisApplication {
     this.chatFeed = document.getElementById('chatFeed');
     this.chatInput = document.getElementById('chatInput');
     this.timeDisplay = document.getElementById('timeDisplay');
+    this.btnVoice = document.getElementById('btnVoiceToggle');
+    this.currentState = 'SLEEPING';
+    this.isActive = false;
   }
 
   init() {
     this.bindEvents();
     this.startClock();
     this.fetchSystemTelemetry();
-    this.fetchWeather();
-    this.renderQueue();
+    this.renderDiagnosticPanel();
 
-    // Init Audio visualizer canvas
+    // Canvas visualizer setup
     const canvas = document.getElementById('audioCanvas');
     if (canvas && window.JarvisAudio) {
       canvas.width = canvas.parentElement.clientWidth || 300;
       window.JarvisAudio.setupCanvasVisualizer(canvas);
     }
 
-    // Set voice callbacks
+    // Connect voice callbacks
     if (window.JarvisVoice) {
       window.JarvisVoice.onCommandCallback = (cmd) => this.handleUserCommand(cmd);
       window.JarvisVoice.onStatusChangeCallback = (st) => this.updateState(st);
     }
 
-    // Welcome message
-    setTimeout(() => {
-      if (window.JarvisAudio) window.JarvisAudio.playBootSound();
-      this.addMessage("jarvis", "Systems initialized. J.A.R.V.I.S. Mark VII is fully operational. How may I be of service, sir?");
-      if (window.JarvisVoice) {
-        window.JarvisVoice.speak("Systems initialized. Jarvis is online and listening.");
-      }
-    }, 600);
-
-    // Refresh telemetry every 10 seconds
+    // Periodic telemetry refresh
     setInterval(() => this.fetchSystemTelemetry(), 10000);
   }
 
   bindEvents() {
-    // Chat Submit
+    // Directive Submit (Text Input)
     const btnSend = document.getElementById('btnSend');
     if (btnSend) {
       btnSend.addEventListener('click', () => this.sendChatMessage());
@@ -59,7 +52,7 @@ class JarvisApplication {
       });
     }
 
-    // Quick command chips
+    // Quick Command Chips
     document.querySelectorAll('.command-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         const cmd = chip.getAttribute('data-cmd') || chip.innerText.trim();
@@ -67,28 +60,27 @@ class JarvisApplication {
       });
     });
 
-    // Voice Action Button
-    const btnVoice = document.getElementById('btnVoiceToggle');
-    if (btnVoice) {
-      btnVoice.addEventListener('click', () => {
-        const isListening = window.JarvisVoice.toggleListening(true);
-        btnVoice.classList.toggle('active', isListening);
-        if (isListening) {
-          btnVoice.innerHTML = '<i class="fas fa-microphone-slash"></i> Stop Listening';
-        } else {
-          btnVoice.innerHTML = '<i class="fas fa-microphone"></i> Hey Jarvis (Voice)';
-        }
-      });
+    // ACTIVATE JARVIS Button (Requirement 2 & 5)
+    if (this.btnVoice) {
+      this.btnVoice.addEventListener('click', () => this.toggleActivation());
     }
 
     // Push To Talk
     const btnPtt = document.getElementById('btnPushToTalk');
     if (btnPtt) {
-      btnPtt.addEventListener('mousedown', () => {
-        window.JarvisVoice.toggleListening(false);
-        btnPtt.classList.add('active');
+      btnPtt.addEventListener('mousedown', async () => {
+        if (window.JarvisVoice) {
+          await window.JarvisVoice.requestMicrophonePermission();
+          window.JarvisVoice.startListeningSession();
+          this.updateState('listening');
+          btnPtt.classList.add('active');
+        }
       });
       btnPtt.addEventListener('mouseup', () => {
+        if (window.JarvisVoice && !this.isActive) {
+          window.JarvisVoice.stopListeningSession();
+          this.updateState('idle');
+        }
         btnPtt.classList.remove('active');
       });
     }
@@ -98,76 +90,257 @@ class JarvisApplication {
     if (btnSoundToggle) {
       btnSoundToggle.addEventListener('click', () => {
         const isMuted = btnSoundToggle.classList.toggle('muted');
-        window.JarvisAudio.setSoundEnabled(!isMuted);
+        if (window.JarvisAudio) window.JarvisAudio.setSoundEnabled(!isMuted);
         btnSoundToggle.innerHTML = isMuted 
           ? '<i class="fas fa-volume-mute"></i> FX Muted' 
           : '<i class="fas fa-volume-up"></i> Sound FX';
       });
     }
 
-    // Arc Reactor Click -> Greeting
+    // Arc Reactor Click -> System status check
     if (this.reactorWrapper) {
       this.reactorWrapper.addEventListener('click', () => {
-        if (window.JarvisAudio) window.JarvisAudio.playBeep(1200, 'sine', 0.1);
-        this.handleUserCommand("status");
+        this.handleUserCommand("system status");
       });
     }
+  }
 
-    // Instagram Tabs
-    document.querySelectorAll('.insta-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        const tabTarget = tab.getAttribute('data-tab');
-        this.switchInstaTab(tabTarget);
-      });
-    });
+  async toggleActivation() {
+    if (!window.JarvisVoice) return;
 
-    // Instagram Downloader / Inspector Action
-    const btnInspect = document.getElementById('btnInspectMedia');
-    if (btnInspect) {
-      btnInspect.addEventListener('click', () => this.handleInstaInspect());
-    }
+    if (this.isActive) {
+      // Deactivate JARVIS
+      this.isActive = false;
+      window.JarvisVoice.stopContinuous();
+      this.updateState('sleeping');
+      if (this.btnVoice) {
+        this.btnVoice.classList.remove('active');
+        this.btnVoice.innerHTML = '<i class="fas fa-microphone"></i> ACTIVATE JARVIS';
+      }
+      this.addMessage("jarvis", "Understood, Boss. I'll stand by.");
+      window.JarvisVoice.speak("Understood, Boss. I'll stand by.");
+    } else {
+      // ACTIVATE JARVIS (Requirements 2, 5)
+      this.isActive = true;
+      if (this.btnVoice) {
+        this.btnVoice.classList.add('active');
+        this.btnVoice.innerHTML = '<i class="fas fa-microphone-slash"></i> STOP LISTENING';
+      }
 
-    // Instagram Caption Generator Action
-    const btnGenerateCaption = document.getElementById('btnGenerateCaption');
-    if (btnGenerateCaption) {
-      btnGenerateCaption.addEventListener('click', () => this.handleGenerateCaption());
-    }
+      // 1. Request microphone permission
+      await window.JarvisVoice.requestMicrophonePermission();
 
-    // Instagram Direct Message Launcher
-    const btnLaunchDm = document.getElementById('btnLaunchDm');
-    if (btnLaunchDm) {
-      btnLaunchDm.addEventListener('click', () => this.handleLaunchDm());
-    }
+      // 2. Load voices and set state to LISTENING
+      this.updateState('listening');
 
-    // Settings Modal
-    const btnSettings = document.getElementById('btnSettings');
-    const modal = document.getElementById('settingsModal');
-    const btnCloseModal = document.getElementById('btnCloseModal');
-    const btnSaveSettings = document.getElementById('btnSaveSettings');
+      // 3. Spoken greeting: "JARVIS online. I'm listening, Boss."
+      const greeting = "JARVIS online. I'm listening, Boss.";
+      this.addMessage("jarvis", greeting);
 
-    if (btnSettings && modal) {
-      btnSettings.addEventListener('click', () => {
-        this.populateSettingsForm();
-        modal.classList.add('open');
-      });
-    }
-    if (btnCloseModal && modal) {
-      btnCloseModal.addEventListener('click', () => modal.classList.remove('open'));
-    }
-    if (btnSaveSettings && modal) {
-      btnSaveSettings.addEventListener('click', () => {
-        this.saveSettingsForm();
-        modal.classList.remove('open');
+      // 4. Start continuous listening mode after speech completes
+      window.JarvisVoice.continuousMode = true;
+      window.JarvisVoice.speak(greeting, () => {
+        if (this.isActive) {
+          this.updateState('listening');
+          window.JarvisVoice.startListeningSession();
+        }
       });
     }
+  }
 
-    // App Quick Launchers
-    document.querySelectorAll('.btn-hud-app').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const url = btn.getAttribute('data-url');
-        if (url) window.JarvisAI.openUrl(url);
+  updateState(state) {
+    this.currentState = state;
+    if (!this.statusElem || !this.statusDot || !this.reactorWrapper) return;
+
+    this.reactorWrapper.classList.remove('listening', 'speaking');
+    this.statusDot.classList.remove('busy', 'listening', 'offline');
+
+    switch (state) {
+      case 'listening':
+        this.statusElem.innerText = "ONLINE // LISTENING";
+        this.statusDot.classList.add('listening');
+        this.reactorWrapper.classList.add('listening');
+        if (this.reactorStatus) this.reactorStatus.innerText = "● MICROPHONE ACTIVE // LISTENING";
+        break;
+
+      case 'processing':
+        this.statusElem.innerText = "PROCESSING...";
+        this.statusDot.classList.add('busy');
+        if (this.reactorStatus) this.reactorStatus.innerText = "EVALUATING COMMAND MATRIX";
+        break;
+
+      case 'executing':
+        this.statusElem.innerText = "EXECUTING DIRECTIVE...";
+        this.statusDot.classList.add('busy');
+        if (this.reactorStatus) this.reactorStatus.innerText = "EXECUTING SYSTEM ACTION";
+        break;
+
+      case 'speaking':
+        this.statusElem.innerText = "TRANSMITTING...";
+        this.statusDot.classList.add('busy');
+        this.reactorWrapper.classList.add('speaking');
+        if (this.reactorStatus) this.reactorStatus.innerText = "SYNTHESIZING SPEECH AUDIO";
+        break;
+
+      case 'sleeping':
+      case 'idle':
+        this.statusElem.innerText = this.isActive ? "ONLINE // LISTENING" : "STANDBY // SLEEPING";
+        if (this.reactorStatus) this.reactorStatus.innerText = this.isActive ? "JARVIS ONLINE // READY" : "JARVIS SLEEPING // SAY 'JARVIS' TO WAKE";
+        break;
+
+      case 'error':
+        this.statusElem.innerText = "ERROR // RECOVERING";
+        this.statusDot.classList.add('busy');
+        if (this.reactorStatus) this.reactorStatus.innerText = "SUBSYSTEM ANOMALY DETECTED";
+        break;
+    }
+  }
+
+  async handleUserCommand(rawText) {
+    if (!rawText || !rawText.trim()) return;
+    const text = rawText.trim();
+
+    // 1. Log User Voice/Text
+    this.addMessage("user", text);
+
+    // 2. Transition State: LISTENING -> PROCESSING
+    this.updateState('processing');
+
+    try {
+      // 3. Route & Execute Command through Central Pipeline
+      const response = await window.JarvisAI.processInput(text);
+
+      if (response.is_sleep) {
+        this.isActive = false;
+        if (this.btnVoice) {
+          this.btnVoice.classList.remove('active');
+          this.btnVoice.innerHTML = '<i class="fas fa-microphone"></i> ACTIVATE JARVIS';
+        }
+      }
+
+      // 4. Log Diagnostic Pipeline (Requirement 35)
+      this.logDiagnosticEntry({
+        transcript: text,
+        intent: response.intent || response.action || "GENERAL_CHAT",
+        target: response.result?.app_name || response.result?.query || response.result?.url || text,
+        found: response.status === "NOT_INSTALLED" ? "NO" : "YES",
+        result: response.status === "NOT_INSTALLED" ? "NOT_INSTALLED" : (response.status === "FAILED" ? "FAILURE" : "SUCCESS")
       });
-    });
+
+      // 5. Update State: EXECUTING
+      if (response.action) {
+        this.updateState('executing');
+      }
+
+      // 6. Display JARVIS Response in Terminal
+      this.addMessage("jarvis", response.reply, response);
+
+      // 7. Transition: SPEAKING -> LISTENING
+      if (window.JarvisVoice) {
+        window.JarvisVoice.speak(response.reply, () => {
+          if (this.isActive && !response.is_sleep) {
+            this.updateState('listening');
+            window.JarvisVoice.startListeningSession();
+          } else {
+            this.updateState('sleeping');
+          }
+        });
+      }
+
+    } catch (err) {
+      console.error("Execution error:", err);
+      const errMsg = "I encountered an anomaly processing that directive, Boss.";
+      this.addMessage("jarvis", errMsg);
+      this.updateState('error');
+      if (window.JarvisVoice) {
+        window.JarvisVoice.speak(errMsg, () => {
+          if (this.isActive) this.updateState('listening');
+        });
+      }
+    }
+  }
+
+  sendChatMessage() {
+    if (!this.chatInput) return;
+    const text = this.chatInput.value.trim();
+    if (!text) return;
+    this.chatInput.value = '';
+    this.handleUserCommand(text);
+  }
+
+  addMessage(sender, text, meta = null) {
+    if (!this.chatFeed) return;
+    const card = document.createElement('div');
+    card.className = `message-card ${sender}`;
+
+    const senderHeader = document.createElement('div');
+    senderHeader.className = 'message-sender';
+    senderHeader.innerHTML = sender === 'user' 
+      ? '<i class="fas fa-user-astronaut"></i> BOSS' 
+      : '<i class="fas fa-robot"></i> J.A.R.V.I.S.';
+
+    const textBody = document.createElement('div');
+    textBody.className = 'message-text';
+    textBody.innerText = text;
+
+    card.appendChild(senderHeader);
+    card.appendChild(textBody);
+
+    if (meta && meta.intent) {
+      const metaBadge = document.createElement('div');
+      metaBadge.className = 'command-meta-badge';
+      metaBadge.style.fontSize = '10px';
+      metaBadge.style.color = '#00f0ff';
+      metaBadge.style.marginTop = '6px';
+      metaBadge.innerText = `[INTENT: ${meta.intent}] ${meta.status || 'COMPLETED'}`;
+      card.appendChild(metaBadge);
+    }
+
+    this.chatFeed.appendChild(card);
+    this.chatFeed.scrollTop = this.chatFeed.scrollHeight;
+  }
+
+  renderDiagnosticPanel() {
+    // Append or locate diagnostic widget
+    const container = document.querySelector('.system-widget-group');
+    if (container && !document.getElementById('diagnosticWidget')) {
+      const diagCard = document.createElement('div');
+      diagCard.id = 'diagnosticWidget';
+      diagCard.className = 'telemetry-card';
+      diagCard.innerHTML = `
+        <div class="card-title-row">
+          <span class="card-title"><i class="fas fa-microchip"></i> COMMAND DIAGNOSTIC STREAM</span>
+          <span class="card-val-badge" id="diagStatusBadge">LIVE</span>
+        </div>
+        <div id="diagnosticLogFeed" style="font-family: monospace; font-size: 11px; max-height: 120px; overflow-y: auto; color: #94a3b8; padding: 4px 0;">
+          <div>[Awaiting voice or text directives]</div>
+        </div>
+      `;
+      container.appendChild(diagCard);
+    }
+  }
+
+  logDiagnosticEntry(entry) {
+    const feed = document.getElementById('diagnosticLogFeed');
+    if (!feed) return;
+
+    const item = document.createElement('div');
+    item.style.marginBottom = '6px';
+    item.style.borderLeft = '2px solid #00f0ff';
+    item.style.paddingLeft = '6px';
+
+    const color = entry.result === 'SUCCESS' ? '#00ff88' : (entry.result === 'NOT_INSTALLED' ? '#f59e0b' : '#ff3366');
+
+    item.innerHTML = `
+      <div style="color: #38bdf8;">VOICE / DIRECTIVE RECEIVED</div>
+      <div>TRANSCRIPT: <span style="color: #fff;">${entry.transcript}</span></div>
+      <div>INTENT: <span style="color: #00f0ff;">${entry.intent}</span></div>
+      <div>TARGET / QUERY: <span style="color: #cbd5e1;">${entry.target}</span></div>
+      <div>APP FOUND: <span style="color: ${entry.found === 'YES' ? '#00ff88' : '#ff3366'}; font-weight: bold;">${entry.found}</span></div>
+      <div>RESULT: <span style="color: ${color}; font-weight: bold;">${entry.result}</span></div>
+    `;
+
+    feed.prepend(item);
   }
 
   startClock() {
@@ -212,301 +385,11 @@ class JarvisApplication {
         const cpuBar = document.getElementById('cpuBarFill');
         if (cpuBar) cpuBar.style.width = `${Math.min(100, data.cpu_load[0] * 30)}%`;
       }
-    } catch (e) {
-      console.warn("Could not query telemetry backend", e);
-    }
-  }
-
-  async fetchWeather() {
-    try {
-      // Default to coordinates or fetch via IP-API / Open-Meteo
-      const lat = 12.9716; // Default Bangalore / User timezone or fallback
-      const lon = 77.5946;
-      const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
-      if (res.ok) {
-        const data = await res.json();
-        const cur = data.current_weather;
-        const tempElem = document.getElementById('weatherTemp');
-        const metaElem = document.getElementById('weatherMeta');
-        if (tempElem) tempElem.innerText = `${Math.round(cur.temperature)}°C`;
-        if (metaElem) metaElem.innerText = `Wind: ${cur.windspeed} km/h | Code: ${cur.weathercode}`;
-      }
-    } catch (e) {
-      console.warn("Weather fetch failed", e);
-    }
-  }
-
-  updateState(state) {
-    if (!this.statusElem || !this.statusDot || !this.reactorWrapper) return;
-
-    this.reactorWrapper.classList.remove('listening', 'speaking');
-    this.statusDot.classList.remove('busy', 'listening');
-
-    if (state === 'listening') {
-      this.statusElem.innerText = "LISTENING...";
-      this.statusDot.classList.add('listening');
-      this.reactorWrapper.classList.add('listening');
-      if (this.reactorStatus) this.reactorStatus.innerText = "AUDIO FEED ACTIVE // LISTENING";
-    } else if (state === 'speaking') {
-      this.statusElem.innerText = "TRANSMITTING...";
-      this.statusDot.classList.add('busy');
-      this.reactorWrapper.classList.add('speaking');
-      if (this.reactorStatus) this.reactorStatus.innerText = "SYNTHESIZING AUDIO SPEECH";
-    } else if (state === 'processing') {
-      this.statusElem.innerText = "PROCESSING...";
-      this.statusDot.classList.add('busy');
-      if (this.reactorStatus) this.reactorStatus.innerText = "NEURAL MATRIX EVALUATING";
-    } else {
-      this.statusElem.innerText = "ONLINE";
-      if (this.reactorStatus) this.reactorStatus.innerText = "JARVIS ONLINE // READY";
-    }
-  }
-
-  async handleUserCommand(rawText) {
-    if (!rawText || !rawText.trim()) return;
-    const text = rawText.trim();
-
-    this.addMessage("user", text);
-    this.updateState('processing');
-
-    try {
-      const response = await window.JarvisAI.processInput(text);
-      this.addMessage("jarvis", response.reply);
-      if (window.JarvisAudio) window.JarvisAudio.playSuccess();
-      if (window.JarvisVoice) window.JarvisVoice.speak(response.reply);
-    } catch (err) {
-      const errMsg = "I encountered an anomaly processing that directive, sir.";
-      this.addMessage("jarvis", errMsg);
-      if (window.JarvisVoice) window.JarvisVoice.speak(errMsg);
-    } finally {
-      this.updateState('idle');
-    }
-  }
-
-  sendChatMessage() {
-    if (!this.chatInput) return;
-    const text = this.chatInput.value.trim();
-    if (!text) return;
-    this.chatInput.value = '';
-    this.handleUserCommand(text);
-  }
-
-  addMessage(sender, text) {
-    if (!this.chatFeed) return;
-    const card = document.createElement('div');
-    card.className = `message-card ${sender}`;
-
-    const senderHeader = document.createElement('div');
-    senderHeader.className = 'message-sender';
-    senderHeader.innerHTML = sender === 'user' 
-      ? '<i class="fas fa-user-astronaut"></i> Commander' 
-      : '<i class="fas fa-robot"></i> J.A.R.V.I.S.';
-
-    const textBody = document.createElement('div');
-    textBody.className = 'message-text';
-    textBody.innerText = text;
-
-    card.appendChild(senderHeader);
-    card.appendChild(textBody);
-    this.chatFeed.appendChild(card);
-    this.chatFeed.scrollTop = this.chatFeed.scrollHeight;
-  }
-
-  // Instagram Tab Switcher
-  switchInstaTab(tabName) {
-    document.querySelectorAll('.insta-tab').forEach(t => {
-      t.classList.toggle('active', t.getAttribute('data-tab') === tabName);
-    });
-    document.querySelectorAll('.tab-pane').forEach(p => {
-      p.classList.toggle('active', p.id === `tab-${tabName}`);
-    });
-  }
-
-  // Instagram Media Inspector & Downloader
-  async handleInstaInspect() {
-    const input = document.getElementById('instaMediaUrl');
-    const previewBox = document.getElementById('instaPreviewBox');
-    if (!input || !previewBox) return;
-
-    const url = input.value.trim();
-    if (!url) {
-      alert("Please paste an Instagram Reel or Post link first.");
-      return;
-    }
-
-    previewBox.innerHTML = '<p style="color:var(--cyan-glow);"><i class="fas fa-spinner fa-spin"></i> Inspecting media streams...</p>';
-
-    try {
-      const data = await window.JarvisInsta.inspectMedia(url);
-      previewBox.classList.add('has-content');
-
-      let embedHtml = '';
-      if (data.embed_url) {
-        embedHtml = `<iframe src="${data.embed_url}" frameborder="0" scrolling="no" allowtransparency="true"></iframe>`;
-      } else if (data.thumbnail_url) {
-        embedHtml = `<img src="${data.thumbnail_url}" style="max-width:100%; border-radius:6px; margin-bottom:10px;" />`;
-      }
-
-      previewBox.innerHTML = `
-        <div style="margin-bottom:10px;">
-          <strong style="color:var(--text-bright);">${data.title || 'Instagram Media'}</strong>
-          <div style="font-size:12px; color:var(--cyan-glow); margin-top:4px;">${data.author_name ? 'By: ' + data.author_name : 'Direct Stream'}</div>
-        </div>
-        ${embedHtml}
-        <div style="display:flex; gap:10px; margin-top:12px;">
-          <a href="${data.url}" target="_blank" class="btn-action-primary" style="flex:1; text-align:center; text-decoration:none; justify-content:center;">
-            <i class="fab fa-instagram"></i> Open on Instagram
-          </a>
-          <button id="btnCopyLink" class="btn-hud-app" style="flex:1; justify-content:center;">
-            <i class="fas fa-copy"></i> Copy Link
-          </button>
-        </div>
-      `;
-
-      const btnCopy = document.getElementById('btnCopyLink');
-      if (btnCopy) {
-        btnCopy.addEventListener('click', () => {
-          navigator.clipboard.writeText(data.url);
-          alert("Instagram link copied to clipboard!");
-        });
-      }
-
-      this.addMessage("jarvis", `Media link parsed successfully. Displaying preview for ${data.shortcode || 'post'}.`);
-      if (window.JarvisVoice) window.JarvisVoice.speak("Instagram media identified, sir.");
-    } catch (err) {
-      previewBox.innerHTML = `<p style="color:var(--danger-neon);">Failed to parse media: ${err.message}</p>`;
-    }
-  }
-
-  // Instagram AI Caption Generator
-  handleGenerateCaption() {
-    const topicInput = document.getElementById('captionTopic');
-    const toneSelect = document.getElementById('captionTone');
-    const nicheSelect = document.getElementById('captionNiche');
-    const resultBox = document.getElementById('captionResultBox');
-    const textOutput = document.getElementById('captionOutput');
-    const tagsContainer = document.getElementById('tagsContainer');
-
-    if (!topicInput || !resultBox || !textOutput) return;
-
-    const topic = topicInput.value.trim() || "My New Tech Setup";
-    const tone = toneSelect ? toneSelect.value : 'sophisticated';
-    const niche = nicheSelect ? nicheSelect.value : 'tech';
-
-    const content = window.JarvisInsta.generateContent(topic, tone, niche);
-
-    textOutput.value = content.fullCaption;
-    resultBox.style.display = 'block';
-
-    if (tagsContainer) {
-      tagsContainer.innerHTML = content.tags.map(t => `<span class="insta-tag-chip">${t}</span>`).join('');
-    }
-
-    // Bind copy button
-    const copyBtn = document.getElementById('btnCopyCaption');
-    if (copyBtn) {
-      copyBtn.onclick = () => {
-        navigator.clipboard.writeText(content.fullCaption);
-        copyBtn.innerText = "COPIED!";
-        setTimeout(() => copyBtn.innerText = "COPY ALL", 2000);
-      };
-    }
-
-    // Add to schedule button
-    const addQueueBtn = document.getElementById('btnAddSchedule');
-    if (addQueueBtn) {
-      addQueueBtn.onclick = () => {
-        window.JarvisInsta.addToQueue({
-          title: topic,
-          caption: content.fullCaption,
-          tags: content.tags
-        });
-        this.renderQueue();
-        alert("Post added to your Instagram Planner Queue!");
-      };
-    }
-
-    this.addMessage("jarvis", `Generated a ${tone} Instagram caption and hashtag package for "${topic}".`);
-    if (window.JarvisVoice) window.JarvisVoice.speak("Your Instagram caption and hashtags are prepared, sir.");
-  }
-
-  // Instagram Direct Message Hub
-  handleLaunchDm() {
-    const userInput = document.getElementById('dmUsername');
-    if (!userInput) return;
-    const val = userInput.value.trim();
-    if (!val) {
-      alert("Please enter an Instagram username or handle.");
-      return;
-    }
-    const info = window.JarvisInsta.generateDmLink(val);
-    window.JarvisAI.openUrl(info.link);
-    this.addMessage("jarvis", `Launching Instagram Direct Message conversation with @${info.username}.`);
-  }
-
-  // Schedule Queue Renderer
-  renderQueue() {
-    const listElem = document.getElementById('queueList');
-    if (!listElem || !window.JarvisInsta) return;
-
-    const items = window.JarvisInsta.queue;
-    if (items.length === 0) {
-      listElem.innerHTML = '<p style="color:var(--text-dim); font-size:12px; text-align:center; padding:12px;">No scheduled posts yet. Generate a caption to add one.</p>';
-      return;
-    }
-
-    listElem.innerHTML = items.map(item => `
-      <div class="queue-item">
-        <div>
-          <div class="queue-title">${item.title}</div>
-          <div class="queue-meta">Date: ${item.date} | Status: <span style="color:var(--cyan-glow);">${item.status}</span></div>
-        </div>
-        <button onclick="window.JarvisApp.removeQueueItem('${item.id}')" style="background:none; border:none; color:var(--danger-neon); cursor:pointer;">
-          <i class="fas fa-trash"></i>
-        </button>
-      </div>
-    `).join('');
-  }
-
-  removeQueueItem(id) {
-    window.JarvisInsta.removeFromQueue(id);
-    this.renderQueue();
-  }
-
-  // Settings
-  populateSettingsForm() {
-    const provider = document.getElementById('settingAiProvider');
-    const geminiKey = document.getElementById('settingGeminiKey');
-    const openaiKey = document.getElementById('settingOpenaiKey');
-    const voiceSelect = document.getElementById('settingVoiceSelect');
-
-    if (provider) provider.value = window.JarvisAI.provider;
-    if (geminiKey) geminiKey.value = window.JarvisAI.geminiKey;
-    if (openaiKey) openaiKey.value = window.JarvisAI.openaiKey;
-
-    if (voiceSelect && window.JarvisVoice) {
-      voiceSelect.innerHTML = window.JarvisVoice.voices.map(v => 
-        `<option value="${v.name}" ${window.JarvisVoice.selectedVoice && window.JarvisVoice.selectedVoice.name === v.name ? 'selected' : ''}>${v.name} (${v.lang})</option>`
-      ).join('');
-    }
-  }
-
-  saveSettingsForm() {
-    const provider = document.getElementById('settingAiProvider')?.value || 'builtin';
-    const geminiKey = document.getElementById('settingGeminiKey')?.value || '';
-    const openaiKey = document.getElementById('settingOpenaiKey')?.value || '';
-    const voiceName = document.getElementById('settingVoiceSelect')?.value;
-
-    window.JarvisAI.setProvider(provider, { gemini: geminiKey, openai: openaiKey });
-    if (voiceName && window.JarvisVoice) {
-      window.JarvisVoice.setVoiceByName(voiceName);
-    }
-    if (window.JarvisAudio) window.JarvisAudio.playSuccess();
-    this.addMessage("jarvis", "Neural configurations and settings saved successfully, sir.");
+    } catch (e) {}
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', () => {
   window.JarvisApp = new JarvisApplication();
   window.JarvisApp.init();
 });
