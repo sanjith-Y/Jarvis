@@ -63,12 +63,13 @@ class CommandRouter:
         # -------------------------------------------------------------
         # 3. APPLICATION COMMANDS (OPEN & LAUNCH)
         # -------------------------------------------------------------
-        open_app_match = re.search(r"^(?:open|launch|start|run)\s+(?:the\s+)?(.+)", clean)
+        open_app_match = re.search(r"^(?:open|launch|start|run)\s+(?:the\s+|my\s+)?(.+)", clean)
         if open_app_match:
             raw_target = open_app_match.group(1).strip()
             # Clean trailing words like "app", "application", "for me", "please"
             target = re.sub(r'\s+(?:app|application)$', '', raw_target, flags=re.IGNORECASE).strip()
-            target = re.sub(r'\s+(?:for\s+me|please)$', '', target, flags=re.IGNORECASE).strip()
+            target = re.sub(r'\s+(?:for\s+me|please)[?.!]*$', '', target, flags=re.IGNORECASE).strip()
+            target = re.sub(r'[?.!]+$', '', target).strip()
 
             # First: check if it's an explicit YouTube search command
             if target.startswith("youtube and search") or target.startswith("youtube to search"):

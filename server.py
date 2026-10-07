@@ -257,7 +257,7 @@ class JarvisRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
-def find_available_port(start_port=8088, max_attempts=10):
+def find_available_port(start_port=8080, max_attempts=10):
     import socket
     for port in range(start_port, start_port + max_attempts):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -266,7 +266,7 @@ def find_available_port(start_port=8088, max_attempts=10):
     return start_port
 
 def run():
-    target_port = int(os.environ.get("PORT", 8088))
+    target_port = int(os.environ.get("PORT", 8080))
     actual_port = find_available_port(target_port)
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer(("", actual_port), JarvisRequestHandler) as httpd:

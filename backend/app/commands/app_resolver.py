@@ -114,11 +114,14 @@ class ApplicationResolver:
         clean = user_input.strip().lower()
         # Remove polite introductory words
         clean = re.sub(r'^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+)', '', clean).strip()
-        # Remove command words: open, launch, start, run
-        clean = re.sub(r'^(?:open|launch|start|run)\s+(?:the\s+)?', '', clean).strip()
-        # Remove trailing words: "for me", "app", "application"
-        clean = re.sub(r'\s+(?:for\s+me|please)$', '', clean).strip()
+        # Remove command words: open, launch, start, run and articles
+        clean = re.sub(r'^(?:open|launch|start|run)\s+(?:the\s+|my\s+)?', '', clean).strip()
+        # Remove leading "the " or "my "
+        clean = re.sub(r'^(?:the|my)\s+', '', clean).strip()
+        # Remove trailing words: "for me", "app", "application", punctuation
+        clean = re.sub(r'\s+(?:for\s+me|please)[?.!]*$', '', clean).strip()
         clean = re.sub(r'\s+(?:app|application)$', '', clean).strip()
+        clean = re.sub(r'[?.!]+$', '', clean).strip()
 
         if not clean:
             return None
@@ -178,9 +181,17 @@ class ApplicationResolver:
         Returns truthful execution status.
         """
         found = self.resolveApplication(query)
-        clean_target = APP_ALIASES.get(query.lower().strip(), query.strip())
 
         if not found:
+            raw = query.strip()
+            clean_name = re.sub(r'^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+)', '', raw, flags=re.IGNORECASE).strip()
+            clean_name = re.sub(r'^(?:open|launch|start|run)\s+(?:the\s+|my\s+)?', '', clean_name, flags=re.IGNORECASE).strip()
+            clean_name = re.sub(r'^(?:the|my)\s+', '', clean_name, flags=re.IGNORECASE).strip()
+            clean_name = re.sub(r'\s+(?:for\s+me|please)[?.!]*$', '', clean_name, flags=re.IGNORECASE).strip()
+            clean_name = re.sub(r'\s+(?:app|application)$', '', clean_name, flags=re.IGNORECASE).strip()
+            clean_name = re.sub(r'[?.!]+$', '', clean_name).strip()
+            clean_target = APP_ALIASES.get(clean_name.lower(), clean_name)
+
             return {
                 "success": False,
                 "not_installed": True,
