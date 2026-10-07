@@ -43,7 +43,16 @@ class JarvisAICore {
 
   async clientSideCommandParser(text) {
     const lower = text.toLowerCase().trim();
-    const clean = lower.replace(/^(?:hey\s+|okay\s+|hi\s+)?jarvis[,:\s]*/i, '').replace(/^(?:can\s+you\s+|please\s+)/i, '').trim();
+    let clean = lower;
+    let changed = true;
+    while (changed) {
+      const prev = clean;
+      clean = clean.replace(/^(?:now\s+)?(?:i\s+said\s+|i\s+told\s+|i\s+asked\s+|tell\s+|ask\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+)/i, '').trim();
+      clean = clean.replace(/^(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?(?:jarvis|jarvin|travis|java|javis|jarv)\b[,:\s]*/i, '').trim();
+      clean = clean.replace(/^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+(?:please\s+)?|will\s+you\s+)/i, '').trim();
+      clean = clean.replace(/^(?:to|now)\s+/i, '').trim();
+      changed = (clean !== prev);
+    }
 
     // Sleep commands
     if (["stop listening", "go to sleep", "sleep jarvis", "deactivate jarvis"].some(s => clean.includes(s))) {
@@ -68,7 +77,7 @@ class JarvisAICore {
     }
 
     // Open Application (Universal)
-    const openMatch = clean.match(/^(?:open|launch|start|run)\s+(?:the\s+)?(.+)/i);
+    const openMatch = clean.match(/^(?:open|launch|start|run|bring\s+up|show\s+me)\s+(?:the\s+|my\s+)?(.+)/i);
     if (openMatch) {
       const target = openMatch[1].replace(/\s+(?:app|application)$/i, '').trim();
 
@@ -101,6 +110,20 @@ class JarvisAICore {
       const launchRes = await this.launchApp(target);
       return {
         reply: launchRes.message || `Certainly, Boss. Opening ${target.toUpperCase()}.`,
+        action: "application_launcher",
+        status: launchRes.success ? "COMPLETED" : "NOT_INSTALLED",
+        intent: "OPEN_APPLICATION",
+        result: launchRes
+      };
+    }
+
+    // Bare application name detection (e.g. "instagram", "whatsapp", "terminal")
+    const bareCandidate = clean.replace(/\s+(?:app|application)$/i, '').replace(/^(?:the|my)\s+/i, '').replace(/[?.!]+$/, '').trim();
+    const knownApps = ["instagram", "whatsapp", "terminal", "safari", "chrome", "spotify", "calculator", "notes", "calendar", "mail", "finder", "settings"];
+    if (knownApps.includes(bareCandidate) || bareCandidate === "instagram") {
+      const launchRes = await this.launchApp(bareCandidate);
+      return {
+        reply: launchRes.message || `Certainly, Boss. Opening ${bareCandidate.toUpperCase()}.`,
         action: "application_launcher",
         status: launchRes.success ? "COMPLETED" : "NOT_INSTALLED",
         intent: "OPEN_APPLICATION",
@@ -145,6 +168,26 @@ class JarvisAICore {
       };
     }
 
+    // Time & Date
+    if (clean.includes("time")) {
+      const now = new Date();
+      return {
+        reply: `The current time is ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, Boss.`,
+        action: null,
+        status: "COMPLETED",
+        intent: "GENERAL_CHAT"
+      };
+    }
+    if (clean.includes("date") || clean.includes("what day")) {
+      const now = new Date();
+      return {
+        reply: `Today is ${now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}, Boss.`,
+        action: null,
+        status: "COMPLETED",
+        intent: "GENERAL_CHAT"
+      };
+    }
+
     // System Telemetry
     if (["battery", "cpu", "status", "diagnostics"].some(k => clean.includes(k))) {
       return {
@@ -155,9 +198,28 @@ class JarvisAICore {
       };
     }
 
+    // Conversational Identity
+    if (clean.includes("who are you") || clean.includes("what is your name")) {
+      return {
+        reply: "I am J.A.R.V.I.S. — Just A Rather Very Intelligent System. Your personal AI operating system assistant, Boss.",
+        action: null,
+        status: "COMPLETED",
+        intent: "GENERAL_CHAT"
+      };
+    }
+
+    if (clean.includes("how are you")) {
+      return {
+        reply: "All diagnostic parameters are nominal and neural cores are fully responsive, Boss.",
+        action: null,
+        status: "COMPLETED",
+        intent: "GENERAL_CHAT"
+      };
+    }
+
     // General chat
     return {
-      reply: `Standing by for your directive, Boss.`,
+      reply: `Understood regarding '${text}', Boss. All systems are operational.`,
       action: null,
       status: "COMPLETED",
       intent: "GENERAL_CHAT"

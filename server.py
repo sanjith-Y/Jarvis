@@ -25,6 +25,7 @@ sys.path.insert(0, BASE_DIR)
 from backend.app.commands.router import command_router
 from backend.app.commands.app_resolver import app_resolver
 from backend.app.commands.youtube_service import youtube_service
+from backend.app.ai.knowledge_engine import knowledge_engine
 
 PORT = int(os.environ.get("PORT", 8088))
 
@@ -171,16 +172,12 @@ class JarvisRequestHandler(http.server.SimpleHTTPRequestHandler):
                 })
                 return
             else:
-                # General conversation
-                clean_q = user_message.strip()
-                if "explain" in clean_q.lower() or "what is" in clean_q.lower():
-                    reply = f"Artificial intelligence refers to computational systems engineered to perform complex tasks requiring reasoning, perception, learning, and synthesis, Boss."
-                else:
-                    reply = f"Standing by for your directive, Boss."
+                # Dynamic Knowledge & Conversational Intelligence
+                reply = knowledge_engine.answer_query(user_message)
                 self._send_json({
                     "reply": reply,
                     "tool_action": None,
-                    "tool_status": None,
+                    "tool_status": "COMPLETED",
                     "intent": "GENERAL_CHAT",
                     "stay_active": True
                 })

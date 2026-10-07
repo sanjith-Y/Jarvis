@@ -181,7 +181,8 @@ class JarvisVoiceEngine {
   }
 
   handleTranscript(transcript) {
-    const lower = transcript.toLowerCase();
+    let clean = transcript.trim();
+    let lower = clean.toLowerCase();
 
     // Check for explicit sleep
     if (["stop listening", "go to sleep", "sleep jarvis", "deactivate jarvis"].some(s => lower.includes(s))) {
@@ -190,20 +191,27 @@ class JarvisVoiceEngine {
       return;
     }
 
-    // Wake-word extraction if present
-    let cleanCommand = transcript;
-    if (lower.startsWith("jarvis") || lower.startsWith("hey jarvis") || lower.startsWith("okay jarvis")) {
-      cleanCommand = transcript.replace(/^(?:hey\s+|okay\s+)?jarvis[,:\s]*/i, '').trim();
-      if (!cleanCommand) {
-        this.speak("Yes, Boss?", () => {
-          if (this.continuousMode) this.startListeningSession();
-        });
-        return;
-      }
+    // Iteratively strip conversational preambles, wake words ("jarvis", "jarvin", "travis", etc.), and prepositions
+    let changed = true;
+    while (changed) {
+      const prev = clean;
+      clean = clean.replace(/^(?:now\s+)?(?:i\s+said\s+|i\s+told\s+|i\s+asked\s+|tell\s+|ask\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+)/i, '').trim();
+      clean = clean.replace(/^(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?(?:jarvis|jarvin|travis|java|javis|jarv)\b[,:\s]*/i, '').trim();
+      clean = clean.replace(/^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+(?:please\s+)?|will\s+you\s+)/i, '').trim();
+      clean = clean.replace(/^(?:to|now)\s+/i, '').trim();
+      changed = (clean !== prev);
+    }
+
+    // If only wake word was spoken
+    if (!clean) {
+      this.speak("Yes, Boss?", () => {
+        if (this.continuousMode) this.startListeningSession();
+      });
+      return;
     }
 
     if (this.onCommandCallback) {
-      this.onCommandCallback(cleanCommand || transcript);
+      this.onCommandCallback(clean);
     }
   }
 

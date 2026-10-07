@@ -234,8 +234,8 @@ export const App: React.FC = () => {
       "standby", "enter standby"
     ].some(kw => lower === kw || lower.startsWith(kw));
 
-    // Wake Words: "Jarvis", "Hey Jarvis", "Okay Jarvis"
-    const isWakeWord = /^(?:hey\s+|okay\s+|hi\s+)?jarvis\b/i.test(lower) || lower === "wake up";
+    // Wake Words: "Jarvis", "Jarvin", "Travis", "Hey Jarvis", "Okay Jarvis"
+    const isWakeWord = /^(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?(?:jarvis|jarvin|travis|java|javis)\b/i.test(lower) || lower === "wake up";
 
     if (!sessionActiveRef.current) {
       // JARVIS IS CURRENTLY SLEEPING
@@ -245,8 +245,18 @@ export const App: React.FC = () => {
         sessionActiveRef.current = true;
         setJarvisState('ACTIVATING');
 
-        // Extract command following wake word if user said e.g. "Jarvis, open Chrome"
-        const cleanCommand = transcript.replace(/^(?:hey\s+|okay\s+|hi\s+)?jarvis[,:\s]*/i, '').trim();
+        // Extract command following wake word if user said e.g. "Jarvis to open Instagram"
+        let cleanCommand = transcript.trim();
+        let changed = true;
+        while (changed) {
+          const prev = cleanCommand;
+          cleanCommand = cleanCommand.replace(/^(?:now\s+)?(?:i\s+said\s+|i\s+told\s+|i\s+asked\s+|tell\s+|ask\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+)/i, '').trim();
+          cleanCommand = cleanCommand.replace(/^(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?(?:jarvis|jarvin|travis|java|javis|jarv)\b[,:\s]*/i, '').trim();
+          cleanCommand = cleanCommand.replace(/^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+(?:please\s+)?|will\s+you\s+)/i, '').trim();
+          cleanCommand = cleanCommand.replace(/^(?:to|now)\s+/i, '').trim();
+          changed = (cleanCommand !== prev);
+        }
+
         if (cleanCommand && cleanCommand.toLowerCase() !== "wake up") {
           processDirective(cleanCommand);
         } else {
@@ -282,8 +292,30 @@ export const App: React.FC = () => {
       return;
     }
 
+    // Clean preamble & wake word from active command
+    let activeCommand = transcript.trim();
+    let actChanged = true;
+    while (actChanged) {
+      const prev = activeCommand;
+      activeCommand = activeCommand.replace(/^(?:now\s+)?(?:i\s+said\s+|i\s+told\s+|i\s+asked\s+|tell\s+|ask\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+)/i, '').trim();
+      activeCommand = activeCommand.replace(/^(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?(?:jarvis|jarvin|travis|java|javis|jarv)\b[,:\s]*/i, '').trim();
+      activeCommand = activeCommand.replace(/^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+(?:please\s+)?|will\s+you\s+)/i, '').trim();
+      activeCommand = activeCommand.replace(/^(?:to|now)\s+/i, '').trim();
+      actChanged = (activeCommand !== prev);
+    }
+
+    if (!activeCommand) {
+      speakResponse(`Yes, ${userName}?`, () => {
+        if (sessionActiveRef.current) {
+          setJarvisState('LISTENING');
+          startListening();
+        }
+      });
+      return;
+    }
+
     // Process Directive
-    processDirective(transcript);
+    processDirective(activeCommand);
   };
 
   // 6. Manual Session Toggle Button

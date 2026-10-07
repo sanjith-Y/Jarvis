@@ -13,6 +13,7 @@ from backend.app.reminders.manager import reminder_manager
 from backend.app.memory.manager import memory_manager
 from backend.app.search.engine import web_search_engine
 from backend.app.vision.analyzer import screen_vision
+from backend.app.ai.knowledge_engine import knowledge_engine
 
 class CommandRouter:
     def __init__(self):
@@ -26,9 +27,16 @@ class CommandRouter:
         text = raw_text.strip()
         lower = text.lower()
 
-        # Normalize text: strip introductory wake words or polite greetings
-        clean = re.sub(r'^(?:hey\s+|okay\s+|hi\s+)?jarvis[,:\s]*', '', lower).strip()
-        clean = re.sub(r'^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+)', '', clean).strip()
+        # Normalize text: iteratively strip conversational speech preambles, wake words, politeness, and prepositions
+        clean = lower
+        changed = True
+        while changed:
+            prev = clean
+            clean = re.sub(r'^(?:now\s+)?(?:i\s+said\s+|i\s+told\s+|i\s+asked\s+|tell\s+|ask\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+)', '', clean).strip()
+            clean = re.sub(r'^(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?(?:jarvis|jarvin|travis|java|javis|jarv)\b[,:\s]*', '', clean).strip()
+            clean = re.sub(r'^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+(?:please\s+)?|will\s+you\s+)', '', clean).strip()
+            clean = re.sub(r'^(?:to|now)\s+', '', clean).strip()
+            changed = (clean != prev)
 
         # -------------------------------------------------------------
         # 1. SLEEP & DEACTIVATE COMMANDS
@@ -63,7 +71,7 @@ class CommandRouter:
         # -------------------------------------------------------------
         # 3. APPLICATION COMMANDS (OPEN & LAUNCH)
         # -------------------------------------------------------------
-        open_app_match = re.search(r"^(?:open|launch|start|run)\s+(?:the\s+|my\s+)?(.+)", clean)
+        open_app_match = re.search(r"^(?:open|launch|start|run|bring\s+up|show\s+me)\s+(?:the\s+|my\s+)?(.+)", clean)
         if open_app_match:
             raw_target = open_app_match.group(1).strip()
             # Clean trailing words like "app", "application", "for me", "please"
@@ -111,6 +119,34 @@ class CommandRouter:
                 "data": exec_res,
                 "stay_active": True
             }
+
+        # 3B. DIRECT / BARE APPLICATION NAME (e.g. "instagram", "whatsapp", "terminal", "calculator")
+        bare_candidate = re.sub(r'\s+(?:app|application)$', '', clean).strip()
+        bare_candidate = re.sub(r'^(?:the|my)\s+', '', bare_candidate).strip()
+        bare_candidate = re.sub(r'[?.!]+$', '', bare_candidate).strip()
+
+        skip_words = {
+            "who", "what", "where", "when", "why", "how", "tell", "explain", "describe",
+            "calculate", "system", "status", "cpu", "ram", "battery", "memory", "play", "sing",
+            "search", "google", "youtube", "check", "screen", "wake", "sleep", "stop", "exit",
+            "good", "hello", "hi", "hey", "yes", "no", "ok", "okay", "thanks", "thank"
+        }
+
+        if bare_candidate and not any(bare_candidate.startswith(sw) for sw in skip_words):
+            found_app = app_resolver.find_application(bare_candidate)
+            if found_app:
+                exec_res = command_executor.executeOpenApplication(bare_candidate)
+                return {
+                    "intent": "OPEN_APPLICATION",
+                    "tool": "application_launcher",
+                    "target": exec_res.get("app_name", bare_candidate.title()),
+                    "executed": True,
+                    "success": exec_res["success"],
+                    "not_installed": exec_res.get("not_installed", False),
+                    "message": exec_res["message"],
+                    "data": exec_res,
+                    "stay_active": True
+                }
 
         # -------------------------------------------------------------
         # 4. MEDIA INTENT PARSER (MUSIC, MOVIE_SONGS, COMEDY, VIDEO, YOUTUBE_SEARCH)
@@ -243,13 +279,16 @@ class CommandRouter:
             }
 
         # -------------------------------------------------------------
-        # 9. GENERAL CHAT / KNOWLEDGE QUESTIONS (e.g. "Explain artificial intelligence")
+        # 9. GENERAL CHAT / KNOWLEDGE QUESTIONS (e.g. "Explain artificial intelligence", "Who is Elon Musk")
         # -------------------------------------------------------------
+        answer = knowledge_engine.answer_query(text)
         return {
             "intent": "GENERAL_CHAT",
             "tool": "chat_engine",
             "query": text,
-            "executed": False,
+            "executed": True,
+            "success": True,
+            "message": answer,
             "stay_active": True
         }
 

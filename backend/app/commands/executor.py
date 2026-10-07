@@ -16,6 +16,7 @@ from backend.app.commands.security import classify_command, SecurityLevel
 from backend.app.commands.app_resolver import app_resolver
 from backend.app.commands.youtube_service import youtube_service
 from backend.app.system.monitor import system_monitor
+from backend.app.ai.knowledge_engine import knowledge_engine
 
 SCREENSHOTS_DIR = DATA_DIR / "screenshots"
 SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -100,11 +101,12 @@ class CommandExecutor:
         }
 
     def executeGeneralChat(self, prompt: str) -> Dict[str, Any]:
-        """Fallback for general conversation or technical explanations."""
+        """Dynamic intelligence response for general conversation or technical explanations."""
+        ans = knowledge_engine.answer_query(prompt)
         return {
             "success": True,
             "prompt": prompt,
-            "message": "Standing by for your directive, Boss."
+            "message": ans
         }
 
     # Backward compatibility helpers

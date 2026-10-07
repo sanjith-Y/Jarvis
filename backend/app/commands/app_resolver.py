@@ -112,16 +112,18 @@ class ApplicationResolver:
         self.refresh_cache()
 
         clean = user_input.strip().lower()
-        # Remove polite introductory words
-        clean = re.sub(r'^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+)', '', clean).strip()
-        # Remove command words: open, launch, start, run and articles
-        clean = re.sub(r'^(?:open|launch|start|run)\s+(?:the\s+|my\s+)?', '', clean).strip()
-        # Remove leading "the " or "my "
-        clean = re.sub(r'^(?:the|my)\s+', '', clean).strip()
-        # Remove trailing words: "for me", "app", "application", punctuation
-        clean = re.sub(r'\s+(?:for\s+me|please)[?.!]*$', '', clean).strip()
-        clean = re.sub(r'\s+(?:app|application)$', '', clean).strip()
-        clean = re.sub(r'[?.!]+$', '', clean).strip()
+        changed = True
+        while changed:
+            prev = clean
+            clean = re.sub(r'^(?:now\s+)?(?:i\s+said\s+|i\s+told\s+|i\s+asked\s+|tell\s+|ask\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+)', '', clean).strip()
+            clean = re.sub(r'^(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?(?:jarvis|jarvin|travis|java|javis|jarv)\b[,:\s]*', '', clean).strip()
+            clean = re.sub(r'^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+(?:please\s+)?|will\s+you\s+)', '', clean).strip()
+            clean = re.sub(r'^(?:open|launch|start|run|bring\s+up|show\s+me)\s+(?:the\s+|my\s+)?', '', clean).strip()
+            clean = re.sub(r'^(?:the|my|to|now)\s+', '', clean).strip()
+            clean = re.sub(r'\s+(?:for\s+me|please)[?.!]*$', '', clean).strip()
+            clean = re.sub(r'\s+(?:app|application)$', '', clean).strip()
+            clean = re.sub(r'[?.!]+$', '', clean).strip()
+            changed = (clean != prev)
 
         if not clean:
             return None

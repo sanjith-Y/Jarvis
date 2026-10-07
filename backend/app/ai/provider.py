@@ -15,6 +15,7 @@ from backend.app.search.engine import web_search_engine
 from backend.app.vision.analyzer import screen_vision
 from backend.app.files.assistant import file_assistant
 from backend.app.voice.service import voice_service
+from backend.app.ai.knowledge_engine import knowledge_engine
 
 SYSTEM_PROMPT = f"""You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), the personal AI operating system assistant for {settings.USER_NAME}.
 Identity:
@@ -352,38 +353,8 @@ class JarvisAIProvider:
         return {"success": False, "reply": "Command acknowledged.", "data": None}
 
     def _local_reasoning_engine(self, text: str, lower: str) -> str:
-        # Conversational butler intelligence (Tony Stark JARVIS persona)
-        if "good morning" in lower:
-            return f"Good morning, {settings.USER_NAME}. All systems are fully operational. How may I assist you today?"
-        if "good evening" in lower:
-            return f"Good evening. All conduits report optimal status. At your service."
-        if "are you ready" in lower:
-            return "Always."
-        if "who are you" in lower or "what is your name" in lower:
-            return f"I am {self.name} — Just A Rather Very Intelligent System. Your personal AI operating system assistant."
-        if "thank you" in lower or "thanks" in lower:
-            return "My pleasure."
-        if "hello" in lower or "hi jarvis" in lower or lower == "hi" or lower == "jarvis":
-            return f"At your service, {settings.USER_NAME}. How may I help?"
-        if "who is tony stark" in lower:
-            return "Tony Stark is the visionary industrialist and engineer who forged the Iron Man armor and designed J.A.R.V.I.S., Boss."
-        if "what is ai" in lower:
-            return "Artificial Intelligence refers to the simulation of cognitive processes and computational intelligence by software architectures, Boss."
-        if "explain quantum computing" in lower:
-            return "Quantum computing utilizes the principles of quantum mechanics — superposition and entanglement — to process computational states exponentially faster than classical bits for specific optimization and cryptography problems, Boss."
-        if "what is qaoa" in lower or "explain qaoa" in lower:
-            return "QAOA is the Quantum Approximate Optimization Algorithm, a variational hybrid quantum-classical algorithm designed to find near-optimal solutions to combinatorial optimization problems on near-term NISQ processors, Boss."
-        if "tell me a joke" in lower or "joke" in lower:
-            return "Why do programmers prefer dark mode? Because light attracts bugs, Boss."
-        if "how are you" in lower:
-            return "All diagnostic parameters are nominal and neural cores are fully responsive, Boss."
-
-        # Context-aware fallback
-        memory_context = memory_manager.get_context_string()
-        if "project" in lower and memory_context:
-            return f"According to stored memory: {memory_context.splitlines()[1]}"
-
-        return f"Certainly, Boss. Standing by for your next directive."
+        # Dynamic knowledge and question answering engine
+        return knowledge_engine.answer_query(text)
 
     async def _query_openai(self, prompt: str, history: Optional[List[Dict[str, str]]] = None) -> str:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
