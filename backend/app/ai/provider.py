@@ -38,7 +38,7 @@ class JarvisAIProvider:
         if routed.get("executed") or routed.get("is_sleep") or routed.get("is_wake"):
             ai_reply = routed.get("message")
             tool_action = routed.get("tool") or routed.get("intent")
-            tool_status = "COMPLETED" if routed.get("success") else "FAILED"
+            tool_status = "COMPLETED" if routed.get("success") else ("NOT_INSTALLED" if routed.get("not_installed") else "FAILED")
             tool_result = routed.get("data")
             is_sleep = routed.get("is_sleep", False)
             is_wake = routed.get("is_wake", False)
