@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>J.A.R.V.I.S. // AI Voice Assistant & Instagram Command Suite</title>
+  
+  <!-- Font Awesome 6 for Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  
+  <!-- Core Stylesheet -->
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- =====================================================================
+       TOP HUD STATUS & TELEMETRY BAR
+       ===================================================================== -->
+  <header class="hud-header">
+    <div class="brand-section">
+      <div class="arc-badge" title="J.A.R.V.I.S. Core Online">
+        <div class="arc-inner-dot"></div>
+      </div>
+      <div class="brand-title">
+        J.A.R.V.I.S.
+        <span class="version">MARK VII</span>
+      </div>
+      <div class="status-indicator">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">ONLINE</span>
+      </div>
+    </div>
+
+    <div class="hud-telemetry-bar">
+      <div class="telemetry-item">
+        <i class="fas fa-microchip"></i>
+        <span>CPU:</span>
+        <span class="val" id="telemetryCpu">Normal</span>
+      </div>
+      <div class="telemetry-item">
+        <i class="fas fa-battery-half"></i>
+        <span>POWER:</span>
+        <span class="val" id="telemetryBattery">100%</span>
+      </div>
+      <div class="telemetry-item">
+        <i class="fas fa-globe"></i>
+        <span id="utcTime">--:--:-- UTC</span>
+      </div>
+      <div class="time-display" id="timeDisplay">
+        00:00:00
+      </div>
+      <button class="btn-icon" id="btnSettings" title="Jarvis Neural Settings">
+        <i class="fas fa-cog"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- =====================================================================
+       MAIN HUD DASHBOARD LAYOUT
+       ===================================================================== -->
+  <main class="main-dashboard">
+    
+    <!-- LEFT PANEL: SYSTEM DIAGNOSTICS & TELEMETRY -->
+    <aside class="hud-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-chart-line"></i> SYSTEM TELEMETRY
+        </div>
+        <div class="panel-badge">MACOS.CORE</div>
+      </div>
+      <div class="panel-body system-widget-group">
+        
+        <!-- CPU & Hardware Load -->
+        <div class="telemetry-card">
+          <div class="card-title-row">
+            <span class="card-title"><i class="fas fa-tachometer-alt"></i> SYSTEM LOAD</span>
+            <span class="card-val-badge">ACTIVE</span>
+          </div>
+          <div class="hud-progress-bar">
+            <div class="hud-progress-fill" id="cpuBarFill" style="width: 25%;"></div>
+          </div>
+          <div class="stat-grid-2">
+            <div class="stat-subitem">
+              <div class="label">HOST</div>
+              <div class="num" id="telemetryHost">Jarvis-Mac</div>
+            </div>
+            <div class="stat-subitem">
+              <div class="label">OS PLATFORM</div>
+              <div class="num" id="telemetryOs" style="font-size: 11px;">Darwin / macOS</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Power & Battery -->
+        <div class="telemetry-card">
+          <div class="card-title-row">
+            <span class="card-title"><i class="fas fa-bolt"></i> POWER CONDUIT</span>
+            <span class="card-val-badge" id="telemetryBatteryVal">OPTIMAL</span>
+          </div>
+          <div class="hud-progress-bar">
+            <div class="hud-progress-fill gold" id="batteryBarFill" style="width: 100%;"></div>
+          </div>
+          <div class="stat-grid-2">
+            <div class="stat-subitem">
+              <div class="label">UPTIME</div>
+              <div class="num" id="telemetryUptime" style="font-size: 11px;">Active</div>
+            </div>
+            <div class="stat-subitem">
+              <div class="label">SPEECH ENGINE</div>
+              <div class="num" style="font-size: 11px;">Web Audio 2.0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Atmospheric / Weather Telemetry -->
+        <div class="telemetry-card">
+          <div class="card-title-row">
+            <span class="card-title"><i class="fas fa-cloud-sun"></i> ATMOSPHERE TELEMETRY</span>
+            <span class="card-val-badge">LIVE METEO</span>
+          </div>
+          <div class="weather-container">
+            <div class="weather-icon-large">
+              <i class="fas fa-sun" style="color: var(--gold-glow);"></i>
+            </div>
+            <div>
+              <div class="weather-temp" id="weatherTemp">26°C</div>
+              <div class="weather-meta" id="weatherMeta">Sensors calibrated</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Launch Shortcuts -->
+        <div class="telemetry-card">
+          <div class="card-title-row">
+            <span class="card-title"><i class="fas fa-rocket"></i> QUICK LAUNCH</span>
+          </div>
+          <div class="quick-launcher-grid">
+            <button class="btn-hud-app" data-url="https://www.instagram.com">
+              <i class="fab fa-instagram"></i> Instagram
+            </button>
+            <button class="btn-hud-app" data-url="https://www.instagram.com/reels/">
+              <i class="fas fa-film"></i> Reels
+            </button>
+            <button class="btn-hud-app" data-url="https://www.instagram.com/direct/inbox/">
+              <i class="fas fa-paper-plane"></i> DMs
+            </button>
+            <button class="btn-hud-app" data-url="https://github.com/sanjith-Y/Jarvis">
+              <i class="fab fa-github"></i> Repository
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- CENTER PANEL: ARC REACTOR & CHAT TERMINAL -->
+    <section class="center-core-panel">
+      
+      <!-- HOLOGRAPHIC ARC REACTOR CORE -->
+      <div class="arc-reactor-holo-container">
+        
+        <div class="reactor-wrapper" id="reactorWrapper" title="Click to trigger system check">
+          <div class="reactor-ring-outer"></div>
+          <div class="reactor-ring-mid"></div>
+          <div class="reactor-ring-inner"></div>
+          <div class="reactor-core">
+            <i class="fas fa-circle-notch fa-spin" style="font-size: 32px; color: #ffffff; opacity: 0.9;"></i>
+          </div>
+        </div>
+
+        <div class="reactor-status-caption" id="reactorStatus">
+          JARVIS ONLINE // AWAITING COMMAND
+        </div>
+
+        <!-- Audio Waveform Visualizer -->
+        <canvas id="audioCanvas" height="50"></canvas>
+
+        <!-- Voice Action Buttons -->
+        <div class="voice-controls-row">
+          <button class="btn-voice-action" id="btnVoiceToggle">
+            <i class="fas fa-microphone"></i> Hey Jarvis (Voice)
+          </button>
+          <button class="btn-voice-action" id="btnPushToTalk">
+            <i class="fas fa-wave-square"></i> Push to Talk
+          </button>
+          <button class="btn-voice-action" id="btnSoundToggle">
+            <i class="fas fa-volume-up"></i> Sound FX
+          </button>
+        </div>
+      </div>
+
+      <!-- TERMINAL & CONVERSATION FEED -->
+      <div class="hud-panel terminal-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i class="fas fa-terminal"></i> NEURAL COMMAND FEED
+          </div>
+          <div class="panel-badge">TERMINAL.LIVE</div>
+        </div>
+        
+        <div class="panel-body">
+          <div class="terminal-feed" id="chatFeed">
+            <!-- Messages populated dynamically -->
+          </div>
+
+          <!-- Quick Suggestion Chips -->
+          <div class="quick-chips-row">
+            <span class="command-chip" data-cmd="open instagram">📸 Open Instagram</span>
+            <span class="command-chip" data-cmd="go to reels">🎬 Go to Reels</span>
+            <span class="command-chip" data-cmd="generate caption">✨ Create AI Caption</span>
+            <span class="command-chip" data-cmd="download reel">📥 Download Reel</span>
+            <span class="command-chip" data-cmd="check battery">⚡ Check Battery</span>
+            <span class="command-chip" data-cmd="what is the time">🕒 Current Time</span>
+          </div>
+
+          <!-- Input Bar -->
+          <div class="chat-input-container">
+            <input type="text" id="chatInput" class="input-hud" placeholder="Speak with 'Hey Jarvis' or type a directive (e.g. 'Open Instagram', 'Create a caption')..." autocomplete="off" />
+            <button class="btn-send" id="btnSend" title="Transmit Directive">
+              <i class="fas fa-arrow-up"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- RIGHT PANEL: THE INSTAGRAM SUITE ("INSTA") -->
+    <aside class="hud-panel instagram-suite-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fab fa-instagram" style="color: #ff6599;"></i> INSTAGRAM COMMAND SUITE
+        </div>
+        <div class="panel-badge" style="color:#ff6599; border-color: rgba(255,101,153,0.3);">INSTA.V1</div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="insta-tabs-bar">
+        <div class="insta-tab active" data-tab="download">
+          <i class="fas fa-download"></i> Inspector
+        </div>
+        <div class="insta-tab" data-tab="caption">
+          <i class="fas fa-magic"></i> AI Studio
+        </div>
+        <div class="insta-tab" data-tab="dm">
+          <i class="fas fa-paper-plane"></i> Quick DM
+        </div>
+        <div class="insta-tab" data-tab="planner">
+          <i class="fas fa-calendar-alt"></i> Queue
+        </div>
+      </div>
+
+      <div class="panel-body">
+        
+        <!-- TAB 1: MEDIA INSPECTOR & DOWNLOADER -->
+        <div class="tab-pane active" id="tab-download">
+          <div class="insta-form-group">
+            <label class="insta-label"><i class="fas fa-link"></i> Instagram Post / Reel URL</label>
+            <div class="insta-input-row">
+              <input type="text" id="instaMediaUrl" class="input-hud" placeholder="https://www.instagram.com/reel/..." />
+              <button class="btn-action-primary" id="btnInspectMedia">
+                <i class="fas fa-search"></i> Inspect
+              </button>
+            </div>
+          </div>
+
+          <!-- Media Preview & Download Card -->
+          <div class="preview-media-box" id="instaPreviewBox">
+            <i class="fab fa-instagram" style="font-size: 38px; color: rgba(225, 48, 108, 0.4); margin-bottom: 10px;"></i>
+            <p style="color: var(--text-dim); font-size: 13px;">
+              Paste any Instagram Reel or Post link above to fetch metadata, stream preview, and quick access.
+            </p>
+          </div>
+        </div>
+
+        <!-- TAB 2: AI CAPTION & HASHTAG STUDIO -->
+        <div class="tab-pane" id="tab-caption">
+          <div class="insta-form-group">
+            <label class="insta-label"><i class="fas fa-lightbulb"></i> Reel / Post Theme</label>
+            <input type="text" id="captionTopic" class="input-hud" placeholder="e.g., Coding Jarvis AI assistant on Mac" />
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="insta-form-group">
+              <label class="insta-label">Tone</label>
+              <select id="captionTone" class="select-hud">
+                <option value="sophisticated">Jarvis Sophisticated</option>
+                <option value="punchy">Punchy & Direct</option>
+                <option value="hype">Viral Hype 🔥</option>
+                <option value="casual">Casual & Relatable</option>
+              </select>
+            </div>
+            <div class="insta-form-group">
+              <label class="insta-label">Niche</label>
+              <select id="captionNiche" class="select-hud">
+                <option value="tech">Tech & AI</option>
+                <option value="fitness">Fitness & Iron</option>
+                <option value="lifestyle">Aesthetic Lifestyle</option>
+                <option value="business">Business Growth</option>
+                <option value="creative">Creative Arts</option>
+              </select>
+            </div>
+          </div>
+
+          <button class="btn-action-primary" id="btnGenerateCaption" style="width: 100%; justify-content: center;">
+            <i class="fas fa-wand-magic-sparkles"></i> Generate Caption & Tags
+          </button>
+
+          <!-- Generated Result Card -->
+          <div class="result-box-hud" id="captionResultBox" style="display: none;">
+            <button class="copy-btn" id="btnCopyCaption">COPY ALL</button>
+            <label class="insta-label" style="margin-bottom: 8px;">Generated Output:</label>
+            <textarea id="captionOutput" class="textarea-hud" style="width: 100%; min-height: 120px;"></textarea>
+            
+            <div style="margin-top: 10px;">
+              <span class="insta-label">Targeted Hashtags:</span>
+              <div class="tags-cloud" id="tagsContainer"></div>
+            </div>
+
+            <button class="btn-hud-app" id="btnAddSchedule" style="width: 100%; margin-top: 10px; justify-content: center;">
+              <i class="fas fa-calendar-plus"></i> Add to Queue Planner
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB 3: DIRECT MESSAGE (DM) QUICK LAUNCH -->
+        <div class="tab-pane" id="tab-dm">
+          <div class="insta-form-group">
+            <label class="insta-label"><i class="fas fa-at"></i> Target Handle / Username</label>
+            <div class="insta-input-row">
+              <input type="text" id="dmUsername" class="input-hud" placeholder="e.g. sanjith or @handle" />
+              <button class="btn-action-primary" id="btnLaunchDm">
+                <i class="fas fa-paper-plane"></i> Launch
+              </button>
+            </div>
+          </div>
+
+          <div class="telemetry-card" style="margin-top: 10px;">
+            <div class="card-title"><i class="fas fa-comment-dots"></i> QUICK DM TEMPLATES</div>
+            <div style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">
+              <button class="btn-hud-app" onclick="document.getElementById('captionTopic').value='Collaboration inquiry'; window.JarvisApp.switchInstaTab('caption');">
+                🤝 Collaboration Outreach
+              </button>
+              <button class="btn-hud-app" onclick="document.getElementById('captionTopic').value='Product Feedback'; window.JarvisApp.switchInstaTab('caption');">
+                💡 Feedback Request
+              </button>
+              <button class="btn-hud-app" onclick="document.getElementById('captionTopic').value='Networking connection'; window.JarvisApp.switchInstaTab('caption');">
+                🚀 Founder Networking
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: POST QUEUE & SCHEDULER -->
+        <div class="tab-pane" id="tab-planner">
+          <div class="insta-label"><i class="fas fa-tasks"></i> Scheduled Content Pipeline</div>
+          <div class="queue-list" id="queueList">
+            <!-- Populated via localStorage -->
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- =====================================================================
+       SETTINGS MODAL (AI PROVIDER, KEYS, VOICES)
+       ===================================================================== -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="fas fa-sliders-h"></i> J.A.R.V.I.S. CONFIGURATION MATRIX
+        </div>
+        <button class="modal-close-btn" id="btnCloseModal">&times;</button>
+      </div>
+
+      <div class="setting-row">
+        <label class="setting-label">AI Intelligence Engine</label>
+        <select id="settingAiProvider" class="select-hud">
+          <option value="builtin">Built-in Jarvis Brain (Offline & Instant)</option>
+          <option value="gemini">Google Gemini API (Generative Intelligence)</option>
+          <option value="openai">OpenAI GPT-4o Mini (Advanced Reasoning)</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <label class="setting-label">Google Gemini API Key (Optional)</label>
+        <input type="password" id="settingGeminiKey" class="input-hud" placeholder="AIzaSy..." />
+      </div>
+
+      <div class="setting-row">
+        <label class="setting-label">OpenAI API Key (Optional)</label>
+        <input type="password" id="settingOpenaiKey" class="input-hud" placeholder="sk-..." />
+      </div>
+
+      <div class="setting-row">
+        <label class="setting-label">Voice Synthesis Engine</label>
+        <select id="settingVoiceSelect" class="select-hud">
+          <!-- Populated from speech synthesis voices -->
+        </select>
+      </div>
+
+      <button class="btn-action-primary" id="btnSaveSettings" style="width: 100%; margin-top: 14px; justify-content: center; background: linear-gradient(135deg, var(--blue-energy), var(--cyan-dim)); border: 1px solid var(--cyan-glow);">
+        <i class="fas fa-save"></i> Save Neural Configuration
+      </button>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="/static/js/audio.js"></script>
+  <script src="/static/js/voice.js"></script>
+  <script src="/static/js/instagram.js"></script>
+  <script src="/static/js/ai.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
