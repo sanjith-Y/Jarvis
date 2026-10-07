@@ -1,11 +1,15 @@
 export type JarvisState = 
   | 'OFFLINE'
   | 'ONLINE'
+  | 'IDLE'
+  | 'ACTIVATING'
   | 'LISTENING'
+  | 'PROCESSING'
   | 'THINKING'
-  | 'SPEAKING'
   | 'EXECUTING'
-  | 'ERROR';
+  | 'SPEAKING'
+  | 'ERROR'
+  | 'SLEEPING';
 
 export type NotificationPriority = 'CRITICAL' | 'IMPORTANT' | 'NORMAL' | 'LOW';
 

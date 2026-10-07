@@ -17,7 +17,8 @@ import { api } from './services/api';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
-  const [jarvisState, setJarvisState] = useState<JarvisState>('ONLINE');
+  const [jarvisState, setJarvisState] = useState<JarvisState>('SLEEPING');
+  const [sessionActive, setSessionActive] = useState<boolean>(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [metrics, setMetrics] = useState<SystemMetrics | undefined>();
   const [unreadCount, setUnreadCount] = useState(0);
@@ -34,6 +35,14 @@ export const App: React.FC = () => {
 
   const recognitionRef = useRef<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const sessionActiveRef = useRef<boolean>(false);
+  const isSpeakingRef = useRef<boolean>(false);
+  const isProcessingRef = useRef<boolean>(false);
+
+  // Sync refs
+  useEffect(() => {
+    sessionActiveRef.current = sessionActive;
+  }, [sessionActive]);
 
   // 1. WebSocket Live Stream
   useEffect(() => {
@@ -46,7 +55,6 @@ export const App: React.FC = () => {
 
       ws.onopen = () => {
         setIsConnected(true);
-        setJarvisState('ONLINE');
       };
 
       ws.onmessage = (event) => {
@@ -59,9 +67,16 @@ export const App: React.FC = () => {
             setUnreadCount(data.unread_notifications || 0);
           } else if (data.type === 'notification_alert') {
             setUnreadCount((c) => c + 1);
-            if (data.notification?.should_speak) {
-              setJarvisState('SPEAKING');
-              setTimeout(() => setJarvisState('ONLINE'), 3000);
+            if (data.notification?.should_speak && sessionActiveRef.current) {
+              speakWithBrowser(data.notification.proactive_message || data.notification.title);
+            }
+          } else if (data.type === 'jarvis_session_update') {
+            if (data.session) {
+              setSessionActive(data.session.active);
+              sessionActiveRef.current = data.session.active;
+              if (!data.session.active) {
+                setJarvisState('SLEEPING');
+              }
             }
           }
         } catch (e) {}
@@ -69,7 +84,6 @@ export const App: React.FC = () => {
 
       ws.onclose = () => {
         setIsConnected(false);
-        setJarvisState('OFFLINE');
         setTimeout(connectWS, 3000);
       };
 
@@ -90,7 +104,85 @@ export const App: React.FC = () => {
     api.getUnreadCount().then((res) => setUnreadCount(res.count)).catch(() => {});
   }, []);
 
-  // 3. Speech Recognition & Wake-Word
+  // Helper: Start / Stop listening safely
+  const startListening = () => {
+    if (!recognitionRef.current) return;
+    if (isSpeakingRef.current) return;
+    try {
+      recognitionRef.current.start();
+    } catch (e) {
+      // Speech recognition may already be active or transitioning
+    }
+  };
+
+  const stopListening = () => {
+    if (!recognitionRef.current) return;
+    try {
+      recognitionRef.current.stop();
+    } catch (e) {}
+  };
+
+  // 3. Browser Text-To-Speech with accurate onend callback
+  const speakWithBrowser = (text: string, onEndCallback?: () => void) => {
+    if (!('speechSynthesis' in window)) {
+      if (onEndCallback) onEndCallback();
+      return;
+    }
+
+    // Cancel any previous speech
+    window.speechSynthesis.cancel();
+
+    // Ensure mic is paused while speaking to prevent feedback
+    stopListening();
+    isSpeakingRef.current = true;
+    setJarvisState('SPEAKING');
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.05;
+    utterance.pitch = 0.95;
+
+    // Pick a natural British/English voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const englishVoice = voices.find(v => 
+      (v.name.includes('Daniel') || v.name.includes('Oliver') || v.name.includes('Google UK English Male') || v.name.includes('Samantha') || v.name.includes('Arthur')) && v.lang.startsWith('en')
+    ) || voices.find(v => v.lang.startsWith('en'));
+
+    if (englishVoice) {
+      utterance.voice = englishVoice;
+    }
+
+    let ended = false;
+    const handleFinish = () => {
+      if (ended) return;
+      ended = true;
+      isSpeakingRef.current = false;
+      if (onEndCallback) {
+        onEndCallback();
+      } else if (sessionActiveRef.current) {
+        // Default transition: SPEAKING -> LISTENING!
+        setJarvisState('LISTENING');
+        startListening();
+      }
+    };
+
+    utterance.onend = handleFinish;
+    utterance.onerror = (e) => {
+      console.warn("Speech synthesis notice:", e);
+      handleFinish();
+    };
+
+    // Safety timeout in case browser TTS event hangs
+    const maxDuration = Math.max(2500, Math.min(20000, text.length * 85));
+    setTimeout(() => {
+      if (!ended && isSpeakingRef.current) {
+        handleFinish();
+      }
+    }, maxDuration);
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // 4. Continuous Speech Recognition
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -101,62 +193,166 @@ export const App: React.FC = () => {
 
       recognition.onstart = () => {
         setIsListening(true);
-        setJarvisState('LISTENING');
+        if (sessionActiveRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
+          setJarvisState('LISTENING');
+        }
       };
 
       recognition.onend = () => {
         setIsListening(false);
-        setJarvisState('ONLINE');
+        // Automatic restart loop: keep listening if session is active and not currently speaking
+        if (sessionActiveRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
+          setTimeout(() => {
+            if (sessionActiveRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
+              try {
+                recognition.start();
+              } catch (e) {}
+            }
+          }, 250);
+        } else if (!sessionActiveRef.current) {
+          // If sleeping, restart in low-overhead mode to catch wake word "Jarvis"
+          setTimeout(() => {
+            if (!sessionActiveRef.current && !isSpeakingRef.current) {
+              try {
+                recognition.start();
+              } catch (e) {}
+            }
+          }, 800);
+        }
       };
 
-      recognition.onerror = () => {
-        setIsListening(false);
-        setJarvisState('ONLINE');
+      recognition.onerror = (event: any) => {
+        if (event.error === 'no-speech') {
+          // Silence is normal; loop will restart
+          return;
+        }
+        if (event.error === 'not-allowed') {
+          console.warn("Microphone access is unavailable. Please check browser permissions.");
+          return;
+        }
       };
 
       recognition.onresult = (event: any) => {
+        if (isSpeakingRef.current) {
+          // Ignore echo while JARVIS is speaking
+          return;
+        }
+
         const transcript = event.results[event.results.length - 1][0].transcript.trim();
-        handleSpeechTranscript(transcript);
+        if (!transcript) return;
+
+        handleIncomingTranscript(transcript);
       };
 
       recognitionRef.current = recognition;
+
+      // Start recognition in background to listen for wake words or active commands
+      try {
+        recognition.start();
+      } catch (e) {}
     }
   }, [userName]);
 
+  // 5. Handle Transcript & Intent Router
+  const handleIncomingTranscript = (transcript: string) => {
+    const lower = transcript.toLowerCase().trim();
+
+    // Explicit Sleep Commands
+    const isSleep = [
+      "stop listening", "stop jarvis", "go to sleep", "sleep jarvis",
+      "deactivate jarvis", "turn off listening", "that's all", "good night jarvis",
+      "standby", "enter standby"
+    ].some(kw => lower === kw || lower.startsWith(kw));
+
+    // Wake Words: "Jarvis", "Hey Jarvis", "Okay Jarvis"
+    const isWakeWord = /^(?:hey\s+|okay\s+|hi\s+)?jarvis\b/i.test(lower) || lower === "wake up";
+
+    if (!sessionActiveRef.current) {
+      // JARVIS IS CURRENTLY SLEEPING
+      if (isWakeWord) {
+        // WAKE UP!
+        setSessionActive(true);
+        sessionActiveRef.current = true;
+        setJarvisState('ACTIVATING');
+
+        // Extract command following wake word if user said e.g. "Jarvis, open Chrome"
+        const cleanCommand = transcript.replace(/^(?:hey\s+|okay\s+|hi\s+)?jarvis[,:\s]*/i, '').trim();
+        if (cleanCommand && cleanCommand.toLowerCase() !== "wake up") {
+          processDirective(cleanCommand);
+        } else {
+          speakWithBrowser(`Yes, ${userName}? I'm listening.`, () => {
+            if (sessionActiveRef.current) {
+              setJarvisState('LISTENING');
+              startListening();
+            }
+          });
+        }
+      }
+      return;
+    }
+
+    // SESSION IS ACTIVE
+    if (isSleep) {
+      // Explicit deactivation
+      setSessionActive(false);
+      sessionActiveRef.current = false;
+      stopListening();
+
+      const userMsg: ChatMessage = {
+        id: Date.now().toString(),
+        sender: 'user',
+        text: transcript,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setMessages((prev) => [...prev, userMsg]);
+
+      speakWithBrowser(`Understood, ${userName}. I'll stand by.`, () => {
+        setJarvisState('SLEEPING');
+      });
+      return;
+    }
+
+    // Process Directive
+    processDirective(transcript);
+  };
+
+  // 6. Manual Session Toggle Button
   const toggleVoice = () => {
     if (!recognitionRef.current) {
       alert("Speech recognition not supported in this browser. Please use Chrome, Edge, or Safari.");
       return;
     }
 
-    if (isListening) {
-      recognitionRef.current.stop();
+    if (sessionActiveRef.current) {
+      // Deactivate session -> SLEEPING
+      setSessionActive(false);
+      sessionActiveRef.current = false;
+      stopListening();
+      speakWithBrowser(`Understood, ${userName}. I'll stand by.`, () => {
+        setJarvisState('SLEEPING');
+      });
     } else {
-      try {
-        recognitionRef.current.start();
-      } catch (e) {}
+      // Activate session -> LISTENING
+      setSessionActive(true);
+      sessionActiveRef.current = true;
+      setJarvisState('ACTIVATING');
+      speakWithBrowser(`JARVIS is online. I'm listening, ${userName}.`, () => {
+        if (sessionActiveRef.current) {
+          setJarvisState('LISTENING');
+          startListening();
+        }
+      });
     }
   };
 
-  const handleSpeechTranscript = (transcript: string) => {
-    const lower = transcript.toLowerCase();
-    
-    // Check wake word: "Jarvis" or "Hey Jarvis"
-    if (lower.startsWith("jarvis") || lower.startsWith("hey jarvis")) {
-      const clean = transcript.replace(/^(hey\s+)?jarvis[:,]?\s*/i, '').trim();
-      if (clean) {
-        handleSendMessage(clean);
-      } else {
-        handleSendMessage("Good evening Jarvis");
-      }
-    } else if (isListening) {
-      handleSendMessage(transcript);
-    }
-  };
-
-  // 4. Send Message to AI Core
-  const handleSendMessage = async (text: string) => {
+  // 7. Execute Directive through Backend Command Engine
+  const processDirective = async (text: string) => {
     if (!text.trim()) return;
+
+    // Temporarily pause microphone during processing and execution to prevent self-echo
+    stopListening();
+    isProcessingRef.current = true;
+    setJarvisState('PROCESSING');
 
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
@@ -164,12 +360,11 @@ export const App: React.FC = () => {
       text: text.trim(),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
-
     setMessages((prev) => [...prev, userMsg]);
-    setJarvisState('THINKING');
 
     try {
       const res = await api.sendMessage(text.trim());
+      isProcessingRef.current = false;
 
       if (res.tool_status === 'CONFIRMATION_REQUIRED') {
         setConfirmModal({
@@ -177,11 +372,24 @@ export const App: React.FC = () => {
           message: res.reply,
           command: res.target || text
         });
-        setJarvisState('ONLINE');
+        speakWithBrowser(res.reply, () => {
+          if (sessionActiveRef.current) {
+            setJarvisState('LISTENING');
+            startListening();
+          }
+        });
         return;
       }
 
-      setJarvisState(res.tool_action ? 'EXECUTING' : 'SPEAKING');
+      // Check if command put assistant to sleep
+      if (res.is_sleep) {
+        setSessionActive(false);
+        sessionActiveRef.current = false;
+      }
+
+      if (res.tool_action) {
+        setJarvisState('EXECUTING');
+      }
 
       const jarvisMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -192,26 +400,42 @@ export const App: React.FC = () => {
         toolStatus: res.tool_status,
         toolResult: res.tool_result
       };
-
       setMessages((prev) => [...prev, jarvisMsg]);
 
-      // Revert to ONLINE after speech duration estimate
-      const speakDuration = Math.min(8000, Math.max(2500, res.reply.length * 50));
-      setTimeout(() => {
-        setJarvisState('ONLINE');
-      }, speakDuration);
+      // Speak response, then AUTOMATICALLY return to LISTENING
+      speakWithBrowser(res.reply, () => {
+        if (res.is_sleep || !sessionActiveRef.current) {
+          setJarvisState('SLEEPING');
+        } else {
+          // CRITICAL REQUIREMENT: SPEAKING -> LISTENING (NEVER IDLE!)
+          setJarvisState('LISTENING');
+          startListening();
+        }
+      });
 
     } catch (e: any) {
+      isProcessingRef.current = false;
       setJarvisState('ERROR');
       const errorMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'jarvis',
-        text: "I encountered an anomaly processing that directive, sir.",
+        text: "I encountered an anomaly processing that directive.",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages((prev) => [...prev, errorMsg]);
-      setTimeout(() => setJarvisState('ONLINE'), 3000);
+      speakWithBrowser("I encountered an anomaly processing that directive.", () => {
+        if (sessionActiveRef.current) {
+          setJarvisState('LISTENING');
+          startListening();
+        } else {
+          setJarvisState('SLEEPING');
+        }
+      });
     }
+  };
+
+  const handleSendMessage = (text: string) => {
+    processDirective(text);
   };
 
   const handleConfirmAction = async () => {
@@ -228,10 +452,22 @@ export const App: React.FC = () => {
         toolStatus: "COMPLETED"
       };
       setMessages((prev) => [...prev, jarvisMsg]);
+      speakWithBrowser(res.message || "Authorized action executed successfully.", () => {
+        if (sessionActiveRef.current) {
+          setJarvisState('LISTENING');
+          startListening();
+        }
+      });
     } catch (e) {
       setJarvisState('ERROR');
-    } finally {
-      setTimeout(() => setJarvisState('ONLINE'), 2000);
+      setTimeout(() => {
+        if (sessionActiveRef.current) {
+          setJarvisState('LISTENING');
+          startListening();
+        } else {
+          setJarvisState('SLEEPING');
+        }
+      }, 2000);
     }
   };
 
@@ -259,6 +495,7 @@ export const App: React.FC = () => {
           {activeTab === 'home' && (
             <HomePage 
               jarvisState={jarvisState}
+              sessionActive={sessionActive}
               messages={messages}
               onSendMessage={handleSendMessage}
               isListening={isListening}

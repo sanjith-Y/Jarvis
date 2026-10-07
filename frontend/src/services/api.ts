@@ -196,5 +196,58 @@ export const api = {
 
   async deleteAutomation(id: number) {
     return fetch(`${BASE_URL}/automations/${id}`, { method: 'DELETE' }).then(r => r.json());
+  },
+
+  // JARVIS Session & Voice
+  async activateJarvis() {
+    return fetch(`${BASE_URL}/jarvis/activate`, { method: 'POST' }).then(r => r.json());
+  },
+
+  async deactivateJarvis() {
+    return fetch(`${BASE_URL}/jarvis/deactivate`, { method: 'POST' }).then(r => r.json());
+  },
+
+  async getJarvisStatus() {
+    return fetch(`${BASE_URL}/jarvis/status`).then(r => r.json());
+  },
+
+  async sendJarvisCommand(command: string) {
+    const res = await fetch(`${BASE_URL}/jarvis/command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command })
+    });
+    return res.json();
+  },
+
+  async launchApp(name: string) {
+    const res = await fetch(`${BASE_URL}/applications/launch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    return res.json();
+  },
+
+  async getInstalledApps() {
+    return fetch(`${BASE_URL}/applications/installed`).then(r => r.json());
+  },
+
+  async playMusic(query: string) {
+    const res = await fetch(`${BASE_URL}/youtube/play`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    });
+    return res.json();
+  },
+
+  async searchYouTube(query: string) {
+    const res = await fetch(`${BASE_URL}/youtube/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query })
+    });
+    return res.json();
   }
 };

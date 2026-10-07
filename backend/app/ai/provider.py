@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Optional
 from backend.app.config import settings
 from backend.app.system.monitor import system_monitor
 from backend.app.commands.executor import command_executor
+from backend.app.commands.router import command_router
 from backend.app.commands.security import classify_command, SecurityLevel
 from backend.app.memory.manager import memory_manager
 from backend.app.reminders.manager import reminder_manager
@@ -32,10 +33,35 @@ class JarvisAIProvider:
         text = user_text.strip()
         lower = text.lower()
 
-        # Step 1: Intent Recognition & Tool Selection
+        # Step 1: Deterministic Command Router (Priority Execution Engine)
+        routed = command_router.route_command(text)
+        if routed.get("executed") or routed.get("is_sleep") or routed.get("is_wake"):
+            ai_reply = routed.get("message")
+            tool_action = routed.get("tool") or routed.get("intent")
+            tool_status = "COMPLETED" if routed.get("success") else "FAILED"
+            tool_result = routed.get("data")
+            is_sleep = routed.get("is_sleep", False)
+            is_wake = routed.get("is_wake", False)
+            stay_active = routed.get("stay_active", True)
+
+            if settings.ENABLE_VOICE and ai_reply:
+                voice_service.speak(ai_reply)
+
+            return {
+                "reply": ai_reply,
+                "tool_action": tool_action,
+                "tool_status": tool_status,
+                "security_level": SecurityLevel.SAFE,
+                "tool_result": tool_result,
+                "intent": routed.get("intent"),
+                "is_sleep": is_sleep,
+                "is_wake": is_wake,
+                "stay_active": stay_active
+            }
+
+        # Step 2: Legacy fallback routing if needed
         intent_data = self._route_intent(text, lower)
         
-        # Step 2: Execute Tool if detected
         tool_action = intent_data.get("tool_action")
         tool_result = None
         tool_status = None
@@ -59,7 +85,8 @@ class JarvisAIProvider:
                     "tool_action": tool_action,
                     "tool_status": tool_status,
                     "security_level": security_level,
-                    "tool_result": None
+                    "tool_result": None,
+                    "stay_active": True
                 }
             elif sec_level == SecurityLevel.CONFIRMATION_REQUIRED and not settings.ALLOW_CONFIRMATION_BYPASS:
                 tool_status = "CONFIRMATION_REQUIRED"
@@ -70,7 +97,8 @@ class JarvisAIProvider:
                     "tool_status": tool_status,
                     "security_level": security_level,
                     "target": target,
-                    "tool_result": None
+                    "tool_result": None,
+                    "stay_active": True
                 }
 
             # Execute the tool
@@ -99,7 +127,8 @@ class JarvisAIProvider:
             "tool_action": tool_action,
             "tool_status": tool_status,
             "security_level": security_level,
-            "tool_result": tool_result
+            "tool_result": tool_result,
+            "stay_active": True
         }
 
     def _route_intent(self, text: str, lower: str) -> Dict[str, Any]:
@@ -338,15 +367,19 @@ class JarvisAIProvider:
             return f"At your service, {settings.USER_NAME}. How may I help?"
         if "explain quantum computing" in lower:
             return "Quantum computing utilizes the principles of quantum mechanics — superposition and entanglement — to process computational states exponentially faster than classical bits for specific optimization and cryptography problems."
+        if "what is qaoa" in lower or "explain qaoa" in lower:
+            return "QAOA is the Quantum Approximate Optimization Algorithm, a variational hybrid quantum-classical algorithm designed to find near-optimal solutions to combinatorial optimization problems on near-term NISQ processors."
+        if "tell me a joke" in lower or "joke" in lower:
+            return "Why do programmers prefer dark mode? Because light attracts bugs, Sanjith."
         if "how are you" in lower:
-            return "All diagnostic parameters are nominal and neural cores are responsive."
+            return "All diagnostic parameters are nominal and neural cores are fully responsive."
 
         # Context-aware fallback
         memory_context = memory_manager.get_context_string()
         if "project" in lower and memory_context:
             return f"According to stored memory: {memory_context.splitlines()[1]}"
 
-        return f"Understood regarding '{text}'. Subsystems stand ready. Would you like me to run diagnostics, search the web, or manage your schedule?"
+        return f"Acknowledged, {settings.USER_NAME}. Standing by for your next directive."
 
     async def _query_openai(self, prompt: str, history: Optional[List[Dict[str, str]]] = None) -> str:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]

@@ -6,6 +6,7 @@ import { Mic, MicOff, Send, Volume2, Sparkles, Activity, ShieldCheck, Terminal }
 
 interface HomePageProps {
   jarvisState: JarvisState;
+  sessionActive: boolean;
   messages: ChatMessage[];
   onSendMessage: (msg: string) => void;
   isListening: boolean;
@@ -16,6 +17,7 @@ interface HomePageProps {
 
 export const HomePage: React.FC<HomePageProps> = ({
   jarvisState,
+  sessionActive,
   messages,
   onSendMessage,
   isListening,
@@ -116,7 +118,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               J.A.R.V.I.S.
             </h2>
             <p className="font-data font-semibold text-xs text-jarvis-cyan tracking-wider uppercase mt-0.5">
-              STATUS: {jarvisState}
+              STATUS: {sessionActive ? `ONLINE // ${jarvisState}` : 'STANDBY // SLEEPING'}
             </p>
             <p className="text-xs text-slate-400 mt-1">
               "How may I assist you, {userName}?"
@@ -174,25 +176,35 @@ export const HomePage: React.FC<HomePageProps> = ({
             <button
               onClick={onToggleVoice}
               className={`w-full py-2.5 px-4 rounded-lg font-hud font-bold text-xs tracking-wider uppercase flex items-center justify-center gap-2 transition-all duration-200 ${
-                isListening
-                  ? 'bg-jarvis-cyan text-black shadow-neon-cyan'
+                sessionActive
+                  ? 'bg-jarvis-cyan text-black shadow-neon-cyan hover:bg-cyan-300'
                   : 'bg-slate-800 hover:bg-slate-700 text-jarvis-cyan border border-jarvis-cyan/30'
               }`}
             >
-              {isListening ? (
+              {sessionActive ? (
                 <>
                   <MicOff className="w-4 h-4" /> STOP LISTENING
                 </>
               ) : (
                 <>
-                  <Mic className="w-4 h-4" /> ACTIVATE VOICE (HEY JARVIS)
+                  <Mic className="w-4 h-4" /> ACTIVATE JARVIS
                 </>
               )}
             </button>
           </div>
 
-          <div className="text-[11px] font-mono text-slate-500 text-center mt-3">
-            {isListening ? 'VOICE ENABLED // LISTENING...' : 'VOICE STANDBY // TAP TO SPEAK'}
+          <div className="text-[11px] font-mono text-center mt-3 flex items-center justify-center gap-1.5">
+            {sessionActive ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-emerald-400 font-bold">JARVIS ACTIVE // {jarvisState}...</span>
+              </>
+            ) : (
+              <>
+                <span className="w-2 h-2 rounded-full bg-slate-400" />
+                <span className="text-slate-400">JARVIS STANDBY // SAY "JARVIS" TO WAKE</span>
+              </>
+            )}
           </div>
         </div>
 

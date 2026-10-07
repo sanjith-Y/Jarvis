@@ -18,6 +18,11 @@ from backend.app.voice.service import voice_service
 from backend.app.automation.engine import automation_engine
 from backend.app.database import get_db
 
+from backend.app.commands.app_resolver import app_resolver
+from backend.app.commands.youtube_service import youtube_service
+from backend.app.commands.router import command_router
+from backend.app.config import settings
+
 router = APIRouter(prefix="/api")
 
 # Models
@@ -29,6 +34,15 @@ class CommandRequest(BaseModel):
     command: str
     action_type: str = "shell"
     confirmed: bool = False
+
+class JarvisCommandRequest(BaseModel):
+    command: str
+
+class AppLaunchRequest(BaseModel):
+    name: str
+
+class YouTubeRequest(BaseModel):
+    query: str
 
 class MemoryCreate(BaseModel):
     content: str
@@ -54,6 +68,15 @@ class AutomationCreate(BaseModel):
     action_type: str
     action_value: str
 
+# Central session tracking
+jarvis_session = {
+    "active": False,
+    "state": "SLEEPING",
+    "wakeWordEnabled": True,
+    "continuousMode": True,
+    "user_name": settings.USER_NAME
+}
+
 # WebSocket Connection Manager
 class ConnectionManager:
     def __init__(self):
@@ -76,18 +99,103 @@ class ConnectionManager:
 
 ws_manager = ConnectionManager()
 
+# --- JARVIS SESSION & COMMAND ROUTING ---
+@router.post("/jarvis/activate")
+async def activate_jarvis():
+    jarvis_session["active"] = True
+    jarvis_session["state"] = "LISTENING"
+    msg = f"JARVIS is online. I'm listening, {settings.USER_NAME}."
+    if settings.ENABLE_VOICE:
+        voice_service.speak(msg)
+    await ws_manager.broadcast({
+        "type": "jarvis_session_update",
+        "session": jarvis_session
+    })
+    return {"success": True, "active": True, "state": "LISTENING", "message": msg}
+
+@router.post("/jarvis/deactivate")
+async def deactivate_jarvis():
+    jarvis_session["active"] = False
+    jarvis_session["state"] = "SLEEPING"
+    msg = f"Understood, {settings.USER_NAME}. I'll stand by."
+    if settings.ENABLE_VOICE:
+        voice_service.speak(msg)
+    await ws_manager.broadcast({
+        "type": "jarvis_session_update",
+        "session": jarvis_session
+    })
+    return {"success": True, "active": False, "state": "SLEEPING", "message": msg}
+
+@router.get("/jarvis/status")
+async def get_jarvis_status():
+    return jarvis_session
+
+@router.post("/jarvis/command")
+async def execute_jarvis_command(req: JarvisCommandRequest):
+    result = command_router.route_command(req.command)
+    if result.get("is_sleep"):
+        jarvis_session["active"] = False
+        jarvis_session["state"] = "SLEEPING"
+    elif result.get("is_wake") or jarvis_session["active"]:
+        jarvis_session["active"] = True
+        jarvis_session["state"] = "LISTENING"
+
+    if settings.ENABLE_VOICE and result.get("message"):
+        voice_service.speak(result["message"])
+
+    await ws_manager.broadcast({
+        "type": "command_activity",
+        "command": req.command,
+        "result": result,
+        "session": jarvis_session
+    })
+    return result
+
+# --- APPLICATION LAUNCHER SERVICE ---
+@router.post("/applications/launch")
+async def launch_application(req: AppLaunchRequest):
+    res = app_resolver.launch(req.name)
+    return res
+
+@router.get("/applications/installed")
+async def get_installed_applications():
+    apps = app_resolver.list_installed_apps()
+    return {"total": len(apps), "applications": apps}
+
+# --- YOUTUBE SERVICE ---
+@router.post("/youtube/play")
+async def play_youtube_music(req: YouTubeRequest):
+    return youtube_service.play_music(req.query)
+
+@router.post("/youtube/search")
+async def search_youtube_endpoint(req: YouTubeRequest):
+    return youtube_service.search_youtube(req.query)
+
 # --- CHAT & AI ---
 @router.post("/chat")
 async def chat_endpoint(req: ChatRequest):
     result = await jarvis_ai.process_user_input(req.message)
     
+    # Track session state transitions
+    if result.get("is_sleep"):
+        jarvis_session["active"] = False
+        jarvis_session["state"] = "SLEEPING"
+    elif result.get("is_wake") or jarvis_session["active"]:
+        jarvis_session["active"] = True
+        jarvis_session["state"] = "LISTENING"
+
     # Broadcast to WS
     await ws_manager.broadcast({
         "type": "chat_activity",
         "user_message": req.message,
         "jarvis_reply": result["reply"],
-        "tool_action": result["tool_action"],
-        "tool_status": result["tool_status"]
+        "tool_action": result.get("tool_action"),
+        "tool_status": result.get("tool_status"),
+        "tool_result": result.get("tool_result"),
+        "is_sleep": result.get("is_sleep", False),
+        "is_wake": result.get("is_wake", False),
+        "stay_active": result.get("stay_active", True),
+        "session": jarvis_session
     })
 
     return result

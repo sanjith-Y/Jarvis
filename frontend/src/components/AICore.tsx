@@ -17,6 +17,31 @@ export const AICore: React.FC<AICoreProps> = ({ state, onClick, size = 260 }) =>
           core: 'radial-gradient(circle, #ffffff 0%, #ff3366 60%, #880022 100%)',
           shadow: '0 0 35px rgba(255, 51, 102, 0.7)'
         };
+      case 'SLEEPING':
+      case 'IDLE':
+      case 'OFFLINE':
+        return {
+          glow: '#475569',
+          ring: 'rgba(71, 85, 105, 0.3)',
+          core: 'radial-gradient(circle, #64748b 0%, #334155 70%, #0f172a 100%)',
+          shadow: '0 0 15px rgba(51, 65, 85, 0.4)'
+        };
+      case 'ACTIVATING':
+        return {
+          glow: '#00f0ff',
+          ring: 'rgba(0, 240, 255, 0.8)',
+          core: 'radial-gradient(circle, #ffffff 0%, #38bdf8 50%, #0284c7 100%)',
+          shadow: '0 0 45px rgba(0, 240, 255, 0.8)'
+        };
+      case 'PROCESSING':
+      case 'THINKING':
+      case 'EXECUTING':
+        return {
+          glow: '#a855f7',
+          ring: 'rgba(168, 85, 247, 0.6)',
+          core: 'radial-gradient(circle, #ffffff 0%, #c084fc 50%, #9333ea 100%)',
+          shadow: '0 0 40px rgba(168, 85, 247, 0.8)'
+        };
       case 'SPEAKING':
         return {
           glow: '#f5a623',
@@ -24,27 +49,12 @@ export const AICore: React.FC<AICoreProps> = ({ state, onClick, size = 260 }) =>
           core: 'radial-gradient(circle, #ffffff 0%, #ffc83b 50%, #f5a623 100%)',
           shadow: '0 0 40px rgba(245, 166, 35, 0.8)'
         };
-      case 'THINKING':
-      case 'EXECUTING':
-        return {
-          glow: '#a855f7',
-          ring: 'rgba(168, 85, 247, 0.5)',
-          core: 'radial-gradient(circle, #ffffff 0%, #c084fc 50%, #9333ea 100%)',
-          shadow: '0 0 40px rgba(168, 85, 247, 0.8)'
-        };
       case 'LISTENING':
         return {
           glow: '#00f0ff',
           ring: 'rgba(0, 240, 255, 0.7)',
           core: 'radial-gradient(circle, #ffffff 0%, #00f0ff 60%, #0072ff 100%)',
           shadow: '0 0 50px rgba(0, 240, 255, 0.9)'
-        };
-      case 'OFFLINE':
-        return {
-          glow: '#475569',
-          ring: 'rgba(71, 85, 105, 0.3)',
-          core: 'radial-gradient(circle, #94a3b8 0%, #475569 80%, #0f172a 100%)',
-          shadow: 'none'
         };
       default: // ONLINE
         return {
