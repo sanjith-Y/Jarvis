@@ -1,75 +1,118 @@
-# ⚡ J.A.R.V.I.S. // Mark VII Neural Interface & Instagram Command Suite
+# ⚡ J.A.R.V.I.S. // Personal AI Operating System
 
-An advanced Iron Man inspired AI Assistant and Instagram Management Center with real-time speech recognition, synthesized voice output, holographic Arc Reactor visualizer, live macOS telemetry, and an Instagram automation suite.
-
-![J.A.R.V.I.S. Architecture](https://img.shields.io/badge/System-MARK%20VII-00f0ff?style=for-the-badge)
-![Python](https://img.shields.io/badge/Python-3.14-blue?style=for-the-badge&logo=python)
-![Interface](https://img.shields.io/badge/Interface-Sci--Fi%20HUD-ff007f?style=for-the-badge)
-![Instagram](https://img.shields.io/badge/Instagram-Suite-E1306C?style=for-the-badge&logo=instagram)
+> **“Your Personal AI. Your Digital Intelligence.”**  
+> *Inspired by the concept of J.A.R.V.I.S. (Just A Rather Very Intelligent System).*
 
 ---
 
-## 🚀 Key Features
+## 🏛️ Architecture & Overview
 
-### 1. ⚛️ Holographic Arc Reactor & Visualizer
-- **Interactive Multi-Ring Arc Reactor:** Concentric rotating segmented rings with reactive pulse states (`Listening`, `Processing`, `Speaking`, `Standby`).
-- **Web Audio API Frequency Analysis:** Live real-time audio canvas waveform responding to speech and system responses.
-- **Synthesized Sci-Fi UI Sounds:** Standalone audio oscillator synthesizers for tactical beeps, power-up chimes, and confirmation tones without external sound files.
+J.A.R.V.I.S. is a production-grade personal AI operating system assistant built with a modern decoupled full-stack architecture:
 
-### 2. 🎙️ Voice Assistant Engine
-- **Wake-Word Activation:** Recognizes `"Hey Jarvis"` and `"Jarvis"`.
-- **Speech-to-Text & Push-to-Talk:** Continuous background listening or manual push-to-talk.
-- **British Butler Speech Synthesis:** Speaks responses in an English butler tone (Daniel / UK English Male) with custom pitch and rate controls.
+- **Frontend:** React 19 + TypeScript + Vite + Tailwind CSS + Lucide React + Framer Motion + Recharts
+- **Backend:** Python 3.14 + FastAPI + Pydantic v2 + Uvicorn + SQLite3
+- **Hardware Probes:** Real-time kernel & hardware diagnostics via `psutil` and macOS native subsystems
+- **Security Matrix:** Tri-tier command classification (`SAFE`, `CONFIRMATION_REQUIRED`, `BLOCKED`)
+- **Speech Engine:** Web Speech API + Native macOS speech synthesizer (`Daniel` / British Butler tone)
+- **Computer Vision:** User-authorized screen analysis & Pillow/OpenAI Vision diagnostic pipeline
 
-### 3. 📸 Instagram Command Suite ("Insta")
-- **Media Inspector & Downloader:** Paste any Instagram Reel or Post URL to preview embedded players, extract shortcodes, author details, and direct links.
-- **AI Caption & Hashtag Architect:** Generate viral Instagram captions with curated hooks, calls-to-action, and categorized hashtag packages across 5 niches (*Tech & AI, Fitness, Lifestyle, Business, Creative*).
-- **Direct Message (DM) Hub:** Quick one-click DM links (`ig.me/m/<username>`) and pre-crafted outreach templates (*Collaboration, Inquiries, Networking*).
-- **Scheduled Content Pipeline:** Plan and queue upcoming Instagram posts with persistent local state.
-
-### 4. 📊 System Diagnostics & Live Telemetry
-- **macOS Hardware Telemetry:** Real-time load indicators, host info, uptime, and battery power conduit tracking.
-- **Atmospheric Weather Telemetry:** Real-time meteorological data powered by Open-Meteo.
-- **Quick OS Launchers:** One-click launch shortcuts to Instagram, YouTube, GitHub, and web searches.
-
-### 5. 🧠 Dual-Brain Intelligence
-- **Built-in Offline Jarvis Brain:** Instant rule-based parsing for system commands, navigation, greetings, and Instagram operations.
-- **Google Gemini & OpenAI Integration:** Optional API key input in Settings to enable generative conversational intelligence.
+```
+jarvis/
+├── frontend/
+│   ├── src/
+│   │   ├── components/    # AICore, Header, Sidebar, QuickCommands, ConfirmationModal
+│   │   ├── pages/         # Home, Assistant, Notifications, Memory, System, Files, Automation, Reminders, Settings
+│   │   ├── services/      # Typed API client & WebSocket streaming
+│   │   ├── types/         # SystemMetrics, NotificationItem, MemoryItem, etc.
+│   │   └── App.tsx        # Central state, audio synthesis, and wake-word loop
+│   ├── package.json
+│   └── vite.config.ts
+├── backend/
+│   ├── app/
+│   │   ├── ai/            # Tool router, intent classifier, and Stark persona
+│   │   ├── commands/      # Safe OS app launch, URL execution, and security matrix
+│   │   ├── notifications/ # 4-tier notification engine, smart summary, simulator
+│   │   ├── memory/        # SQLite long-term knowledge vault
+│   │   ├── reminders/     # Natural language time parser & persistent scheduler
+│   │   ├── system/        # Real hardware telemetry & process probes
+│   │   ├── vision/        # Explicit screen capture & AI vision analysis
+│   │   ├── files/         # Sandboxed workspace file assistant
+│   │   ├── search/        # Real DuckDuckGo web search
+│   │   ├── voice/         # Native macOS speech synthesis
+│   │   └── api/           # REST endpoints & WebSockets
+│   ├── requirements.txt
+│   └── .env.example
+├── data/                  # SQLite database & captured screenshots
+├── logs/                  # System event logs
+├── run.py                 # Full-stack launcher
+└── README.md
+```
 
 ---
 
-## 🛠️ Quick Start
+## 🚀 Quick Start
 
-### 1. Run the Assistant Server
-Simply run the included zero-dependency Python server:
+### 1. Prerequisites
+- Python 3.10+
+- Node.js 18+ & npm
+
+### 2. Run the Full-Stack Application
+You can run the full-stack system in a single command:
 
 ```bash
-python3 server.py
+python3 run.py
 ```
 
-### 2. Access the HUD
-Open your browser at:
+This starts the FastAPI backend on **`http://localhost:8000`** serving the compiled React frontend, live WebSockets, and real system probes.
+
+### 3. Frontend Development (HMR Mode)
+If you wish to run the Vite dev server with Hot Module Reloading:
+
+```bash
+cd frontend
+npm run dev
 ```
-http://localhost:8080
-```
+Open **`http://localhost:5173`**.
 
 ---
 
-## 🗣️ Sample Voice Directives
+## ⚡ Core Capabilities
 
-- *"Hey Jarvis, open Instagram"*
-- *"Hey Jarvis, go to Reels"*
-- *"Hey Jarvis, create an Instagram caption for coding"*
-- *"Hey Jarvis, check battery level"*
-- *"Hey Jarvis, what is the current time?"*
-- *"Hey Jarvis, search Google for Apple M4 benchmarks"*
-- *"Hey Jarvis, run a system status diagnostic"*
+### 1. 🎙️ Voice & Wake-Word
+- Default Wake-Word: `"Hey Jarvis"` or `"Jarvis"`.
+- Real speech synthesis using British butler persona (`say -v Daniel` on macOS).
+- Push-to-talk and continuous listening fallbacks.
+
+### 2. 🛡️ Command Security Enclave
+Every directive is classified before execution:
+- **`SAFE`**: `Open Chrome`, `Open VS Code`, `System Status`, `Search Web`. Executed immediately.
+- **`CONFIRMATION_REQUIRED`**: Modifying system files, installing packages, killing processes. Triggers an explicit user authorization dialog.
+- **`BLOCKED`**: Destructive patterns (`rm -rf /`, fork bombs, credential theft) are stopped.
+
+### 3. 🔔 Intelligent Notification Matrix
+- **`CRITICAL`**: Immediate voice interruption (Security alerts, system failures, critical battery).
+- **`IMPORTANT`**: Voice announcement if not in Quiet Mode (Deadlines, meetings, calendar, GitHub issues).
+- **`NORMAL`**: Logged in notification center without interruption.
+- **`LOW PRIORITY`**: Silently grouped (Promotions, marketing, likes).
+- **Smart Summary**: `"You have 25 notifications. Three require your attention: one important email, one GitHub issue, and one calendar reminder."`
+- **Notification Simulator**: Test classification and voice alerts live in the UI.
+
+### 4. 🧠 Long-Term Memory
+- Store user preferences, projects, and goals.
+- Persisted in SQLite and automatically injected into conversational context.
+
+### 5. 📊 Real Hardware Diagnostics
+- Real CPU load, Memory usage, Disk volume, Battery level, and active processes.
+- Zero fake or random numbers — verified with `psutil`.
 
 ---
 
-## ⚙️ Configuration
+## 🧪 Testing
 
-Click the **Cog Icon** in the top navigation bar to open the Neural Settings matrix:
-1. Select AI Engine: **Built-in Jarvis Brain**, **Google Gemini**, or **OpenAI GPT-4o Mini**.
-2. Enter your optional Gemini or OpenAI API key.
-3. Choose your preferred voice synthesis speaker.
+Run the automated test suite:
+
+```bash
+python3 -m unittest backend/tests/test_jarvis.py
+```
+
+All 7 integration tests verify hardware telemetry, command security, memory persistence, notification classification, reminder parsing, and file sandboxing.
