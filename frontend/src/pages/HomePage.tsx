@@ -250,14 +250,32 @@ export const HomePage: React.FC<HomePageProps> = ({
 
                   <p className="whitespace-pre-wrap">{m.text}</p>
 
-                  {/* Tool Action Badge */}
+                  {/* Directive Execution Log Badge */}
                   {m.toolAction && (
-                    <div className="mt-2 pt-2 border-t border-slate-800 flex items-center gap-2 text-[11px] font-mono">
-                      <span className="text-slate-400">⚙ Action:</span>
-                      <span className="text-jarvis-cyan font-semibold">{m.toolAction}</span>
-                      <span className="px-1.5 py-0.2 rounded bg-jarvis-cyan/15 text-jarvis-cyan text-[9px] border border-jarvis-cyan/30">
-                        {m.toolStatus || 'COMPLETED'}
-                      </span>
+                    <div className="mt-2 pt-2 border-t border-slate-800 flex flex-wrap items-center gap-2 text-[11px] font-mono">
+                      <span className="text-slate-400 font-bold">COMMAND // {m.toolAction}:</span>
+                      {m.toolResult?.app_name && (
+                        <span className="text-white font-semibold">{m.toolResult.app_name}</span>
+                      )}
+                      {m.toolResult?.query && (
+                        <span className="text-white font-semibold">"{m.toolResult.query}"</span>
+                      )}
+                      {m.toolResult?.service && (
+                        <span className="text-slate-400">({m.toolResult.service})</span>
+                      )}
+                      {m.toolResult?.not_installed ? (
+                        <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 text-[10px] border border-red-500/40 font-bold">
+                          ✗ NOT INSTALLED
+                        </span>
+                      ) : m.toolStatus === 'FAILED' ? (
+                        <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 text-[10px] border border-red-500/40 font-bold">
+                          ✗ FAILED
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] border border-emerald-500/40 font-bold">
+                          ✓ SUCCESS
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

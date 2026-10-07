@@ -142,7 +142,7 @@ class ApplicationResolver:
                 "success": False,
                 "not_installed": True,
                 "app_name": clean_target.title(),
-                "message": f"Sorry, {clean_target.title()} is not installed on this system."
+                "message": f"Sorry, Boss. {clean_target.title()} isn't installed on this system."
             }
 
         app_name, app_path = found
@@ -159,16 +159,17 @@ class ApplicationResolver:
                 "not_installed": False,
                 "app_name": app_name,
                 "path": app_path,
-                "message": f"Certainly. Opening {app_name}."
+                "message": f"Certainly, Boss. Opening {app_name}."
             }
         except Exception as e:
+            print(f"Error launching {app_name}: {e}")
             return {
                 "success": False,
                 "not_installed": False,
                 "app_name": app_name,
                 "path": app_path,
                 "error": str(e),
-                "message": f"I found {app_name}, but I couldn't open it. Please check the application."
+                "message": f"Sorry, Boss. I found {app_name}, but I couldn't open it."
             }
 
     def close(self, query: str) -> Dict[str, Any]:

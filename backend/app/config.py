@@ -12,7 +12,7 @@ LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 class Settings(BaseSettings):
     JARVIS_NAME: str = "JARVIS"
-    USER_NAME: str = "Sanjith"
+    USER_NAME: str = "Boss"
     HOST: str = "127.0.0.1"
     PORT: int = 8000
     FRONTEND_PORT: int = 5173
@@ -22,8 +22,8 @@ class Settings(BaseSettings):
     AI_MODEL: str = "gpt-4o-mini"
     AI_TEMPERATURE: float = 0.7
 
-    # Voice settings
-    ENABLE_VOICE: bool = True
+    # Voice settings - Managed primarily by unified single male SpeechManager in frontend
+    ENABLE_VOICE: bool = False
     VOICE_NAME: str = "Daniel"
     SPEECH_RATE: float = 1.0
 

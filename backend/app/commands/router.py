@@ -1,6 +1,6 @@
 """
-Intent Detection and Command Router
-Categorizes directives deterministically, executes computer functions, and prevents generic LLM overrides.
+Intent Detection and Universal Command Router
+Deterministic classification and execution of computer operations, YouTube media, application controls, and hardware actions.
 """
 
 import re
@@ -19,7 +19,7 @@ from backend.app.config import settings
 
 class CommandRouter:
     def __init__(self):
-        self.user_name = settings.USER_NAME
+        self.user_name = "Boss"
 
     def route_command(self, raw_text: str) -> Dict[str, Any]:
         """
@@ -30,7 +30,7 @@ class CommandRouter:
 
         # Clean introductory wake words or polite greetings
         clean = re.sub(r'^(?:hey\s+|okay\s+|hi\s+)?jarvis[,:\s]*', '', lower).strip()
-        clean = re.sub(r'^(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+)', '', clean).strip()
+        clean = re.sub(r'^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+)', '', clean).strip()
 
         # -------------------------------------------------------------
         # 1. SLEEP & SESSION COMMANDS
@@ -45,18 +45,18 @@ class CommandRouter:
                 "tool": "session_control",
                 "is_sleep": True,
                 "success": True,
-                "message": f"Understood, {self.user_name}. I'll stand by.",
+                "message": "Understood, Boss. I'll stand by.",
                 "stay_active": False
             }
 
-        # WAKE ACKNOWLEDGMENT (when user just says "Jarvis")
+        # WAKE ACKNOWLEDGMENT (when user says "Jarvis")
         if clean in ["", "wake up", "are you there", "hello", "hi"]:
             return {
                 "intent": "WAKE",
                 "tool": "session_control",
                 "is_wake": True,
                 "success": True,
-                "message": f"Yes, {self.user_name}? I'm listening.",
+                "message": "Yes, Boss?",
                 "stay_active": True
             }
 
@@ -66,11 +66,11 @@ class CommandRouter:
         # -------------------------------------------------------------
         if " and " in clean:
             parts = [p.strip() for p in clean.split(" and ")]
-            if len(parts) == 2 and any(p.startswith("open") for p in parts):
+            if len(parts) == 2 and any(p.startswith("open") or p.startswith("launch") for p in parts):
                 res1 = self._route_single_intent(parts[0])
                 res2 = self._route_single_intent(parts[1])
                 if res1.get("executed") and res2.get("executed"):
-                    combined_msg = f"{res1.get('message')} Also, {res2.get('message').lower()}"
+                    combined_msg = f"{res1.get('message')} Also, {res2.get('message')}"
                     return {
                         "intent": "MULTI_ACTION",
                         "tool": "multi_executor",
@@ -87,15 +87,22 @@ class CommandRouter:
         return self._route_single_intent(clean, original_text=text)
 
     def _route_single_intent(self, clean: str, original_text: str = "") -> Dict[str, Any]:
-        # A. MUSIC & YOUTUBE INTENT
-        # Matches: "play any love song for me", "play a love song", "play romantic songs", "play Tamil love songs", "play Arijit Singh"
-        music_match = re.search(r"^(?:play|sing)\s+(.+)", clean)
-        if music_match:
-            song_query = music_match.group(1).strip()
-            res = youtube_service.play_music(song_query)
+        # -------------------------------------------------------------
+        # A. YOUTUBE INTENTS (SEARCH_YOUTUBE, PLAY_MOVIE_SONGS, PLAY_YOUTUBE_VIDEO, PLAY_MUSIC)
+        # -------------------------------------------------------------
+
+        # A1. SEARCH_YOUTUBE
+        # Matches: "open youtube and search python tutorial", "search youtube for python tutorial", "find on youtube ..."
+        yt_search_match = re.search(
+            r"^(?:open\s+youtube\s+and\s+search\s+(?:for\s+)?|search\s+youtube\s+for\s+|search\s+on\s+youtube\s+for\s+|find\s+on\s+youtube\s+|find\s+videos\s+about\s+)(.+)",
+            clean
+        )
+        if yt_search_match:
+            query = yt_search_match.group(1).strip()
+            res = youtube_service.search_youtube(query)
             return {
-                "intent": "PLAY_MUSIC",
-                "tool": "youtube_play",
+                "intent": "SEARCH_YOUTUBE",
+                "tool": "youtube_search",
                 "executed": True,
                 "success": res["success"],
                 "message": res["message"],
@@ -115,13 +122,33 @@ class CommandRouter:
                 "stay_active": True
             }
 
-        yt_search_match = re.search(r"^(?:search\s+youtube\s+for|find\s+on\s+youtube)\s+(.+)", clean)
-        if yt_search_match:
-            yt_query = yt_search_match.group(1).strip()
-            res = youtube_service.search_youtube(yt_query)
+        # A2. PLAY_MOVIE_SONGS
+        # Matches: "play jana nayagan movie songs", "give me songs from jana nayagan", "play songs from leo", "play songs from vikram", "give me a song from leo"
+        movie_match1 = re.search(
+            r"^(?:play|give\s+me)\s+(?:the\s+)?(?:songs?\s+from|movie\s+songs?\s+from|movie\s+songs?\s+of)\s+(.+)",
+            clean
+        )
+        movie_match2 = re.search(
+            r"^(?:play|give\s+me)\s+(.+?)\s+movie\s+songs",
+            clean
+        )
+        movie_match3 = re.search(
+            r"^(?:play|give\s+me)\s+(?:the\s+)?song\s+(.+?)\s+from\s+(.+)",
+            clean
+        )
+        movie_match4 = re.search(
+            r"^i\s+want\s+(?:some\s+)?songs?\s+from\s+(.+?)(?:\s+movie)?$",
+            clean
+        )
+
+        if movie_match3:
+            song_name = movie_match3.group(1).strip()
+            movie_name = movie_match3.group(2).strip()
+            query = f"{song_name} from {movie_name}"
+            res = youtube_service.play_movie_songs(query)
             return {
-                "intent": "YOUTUBE_SEARCH",
-                "tool": "youtube_search",
+                "intent": "PLAY_MOVIE_SONGS",
+                "tool": "youtube_play_movie_songs",
                 "executed": True,
                 "success": res["success"],
                 "message": res["message"],
@@ -129,12 +156,69 @@ class CommandRouter:
                 "stay_active": True
             }
 
+        if movie_match1 or movie_match2 or movie_match4:
+            matched_group = movie_match1 or movie_match2 or movie_match4
+            movie_query = matched_group.group(1).strip()
+            res = youtube_service.play_movie_songs(movie_query)
+            return {
+                "intent": "PLAY_MOVIE_SONGS",
+                "tool": "youtube_play_movie_songs",
+                "executed": True,
+                "success": res["success"],
+                "message": res["message"],
+                "data": res,
+                "stay_active": True
+            }
+
+        # A3. PLAY_YOUTUBE_VIDEO (Comedy & General Videos)
+        # Matches: "play a comedy video", "play soori comedy", "play vadivelu comedy", "play vadivelu comedy videos", "play santhanam comedy", "play tamil comedy videos", "give me some soori comedy"
+        comedy_match = re.search(
+            r"^(?:play|give\s+me\s+(?:some\s+)?|show\s+me\s+(?:some\s+)?)(?:a\s+|an\s+|some\s+)?(.+?\bcomedy(?:\s+videos?)?)",
+            clean
+        )
+        if comedy_match:
+            video_query = comedy_match.group(1).strip()
+            res = youtube_service.play_youtube_video(video_query)
+            return {
+                "intent": "PLAY_YOUTUBE_VIDEO",
+                "tool": "youtube_play_video",
+                "executed": True,
+                "success": res["success"],
+                "message": res["message"],
+                "data": res,
+                "stay_active": True
+            }
+
+        # A4. PLAY_MUSIC (Any genre, vibe, artist, or specific song name)
+        # Matches: "play love songs", "play breakup songs", "play sad songs", "play vibe songs", "play tamil vibe songs", "play vaathi coming", "play arabic kuthu", "i want some breakup songs"
+        music_match1 = re.search(r"^(?:play|sing)\s+(.+)", clean)
+        music_match2 = re.search(r"^i\s+want\s+(?:some\s+)?(.+?\bsongs?)", clean)
+        music_match3 = re.search(r"^i\'m\s+feeling\s+\w+[,:\s]+play\s+(?:some\s+)?(.+)", clean)
+
+        if music_match1 or music_match2 or music_match3:
+            matched_music = music_match1 or music_match2 or music_match3
+            song_query = matched_music.group(1).strip()
+            res = youtube_service.play_music(song_query)
+            return {
+                "intent": "PLAY_MUSIC",
+                "tool": "youtube_play_music",
+                "executed": True,
+                "success": res["success"],
+                "message": res["message"],
+                "data": res,
+                "stay_active": True
+            }
+
+        # -------------------------------------------------------------
         # B. APPLICATION COMMANDS (OPEN & CLOSE)
-        # Matches: "open whatsapp", "please open whatsapp", "open chrome", "launch vs code", "open spotify", etc.
+        # -------------------------------------------------------------
         open_match = re.search(r"^(?:open|launch|start|run)\s+(?:the\s+)?(.+)", clean)
         if open_match:
             target_app = open_match.group(1).strip()
-            # If target is a website name like "google", "github", "youtube"
+            # Clean trailing words like "app", "application"
+            target_app = re.sub(r'\s+(?:app|application)$', '', target_app, flags=re.IGNORECASE).strip()
+
+            # If target is a common website name like "google", "github", "youtube", "reddit"
             if target_app in ["google", "github", "gmail", "reddit", "twitter", "instagram"]:
                 site_url = f"https://{target_app}.com" if target_app != "gmail" else "https://mail.google.com"
                 youtube_service._open_in_browser(site_url)
@@ -143,11 +227,11 @@ class CommandRouter:
                     "tool": "browser_open",
                     "executed": True,
                     "success": True,
-                    "message": f"Opening {target_app.title()}.",
+                    "message": f"Certainly, Boss. Opening {target_app.title()}.",
                     "stay_active": True
                 }
 
-            # Otherwise launch application via ApplicationResolver
+            # Otherwise launch application dynamically via ApplicationResolver
             launch_res = app_resolver.launch(target_app)
             return {
                 "intent": "OPEN_APPLICATION",
@@ -163,6 +247,7 @@ class CommandRouter:
         close_match = re.search(r"^(?:close|quit|kill)\s+(?:the\s+)?(.+)", clean)
         if close_match:
             target_app = close_match.group(1).strip()
+            target_app = re.sub(r'\s+(?:app|application)$', '', target_app, flags=re.IGNORECASE).strip()
             close_res = app_resolver.close(target_app)
             return {
                 "intent": "CLOSE_APPLICATION",
@@ -175,8 +260,9 @@ class CommandRouter:
                 "stay_active": True
             }
 
+        # -------------------------------------------------------------
         # C. SYSTEM STATUS COMMANDS
-        # Matches: "what's my cpu usage?", "cpu usage", "how much ram", "memory usage", "battery level", "system status"
+        # -------------------------------------------------------------
         if any(kw in clean for kw in [
             "cpu usage", "what's my cpu", "what is my cpu", "ram usage", "memory usage",
             "how much ram", "battery level", "what's my battery", "system status", "system info",
@@ -184,16 +270,16 @@ class CommandRouter:
         ]):
             metrics = system_monitor.get_current_metrics()
             if "cpu" in clean:
-                msg = f"Your CPU is currently running at {metrics['cpu_percent']} percent."
+                msg = f"Your CPU is currently at {metrics['cpu_percent']} percent, Boss."
             elif "ram" in clean or "memory" in clean:
-                msg = f"Memory usage is currently at {metrics['memory_percent']} percent ({metrics['memory_used_gb']} GB of {metrics['memory_total_gb']} GB)."
+                msg = f"Memory usage is currently at {metrics['memory_percent']} percent ({metrics['memory_used_gb']} GB of {metrics['memory_total_gb']} GB), Boss."
             elif "battery" in clean:
-                msg = f"Battery is at {metrics['battery']['percent']} percent and {metrics['battery']['status'].lower()}."
+                msg = f"Battery is at {metrics['battery']['percent']} percent and {metrics['battery']['status'].lower()}, Boss."
             else:
                 msg = (
-                    f"CPU is at {metrics['cpu_percent']} percent. "
-                    f"Memory usage is {metrics['memory_percent']} percent. "
-                    f"Battery is at {metrics['battery']['percent']} percent and {metrics['battery']['status'].lower()}."
+                    f"CPU is at {metrics['cpu_percent']} percent, "
+                    f"memory usage is {metrics['memory_percent']} percent, and "
+                    f"battery is at {metrics['battery']['percent']} percent, Boss."
                 )
             return {
                 "intent": "SYSTEM_STATUS",
@@ -205,8 +291,9 @@ class CommandRouter:
                 "stay_active": True
             }
 
+        # -------------------------------------------------------------
         # D. NOTIFICATION COMMANDS
-        # Matches: "check my notifications", "any important notifications?", "summarize my notifications"
+        # -------------------------------------------------------------
         if any(kw in clean for kw in [
             "check notifications", "check my notifications", "any notifications",
             "summarize my notifications", "summarize notifications", "do i have anything important",
@@ -217,11 +304,12 @@ class CommandRouter:
                 important_items = sum_data.get("important_items", []) + sum_data.get("critical_items", [])
                 if important_items:
                     bullets = [f"'{n['title']}' from {n['source']}" for n in important_items[:2]]
-                    reply = f"The important notifications are: {'; '.join(bullets)}."
+                    reply = f"Certainly, Boss. Important notifications: {'; '.join(bullets)}."
                 else:
-                    reply = "You have no urgent or critical notifications at this time."
+                    reply = "You have no urgent or critical notifications at this time, Boss."
             else:
-                reply = sum_data["summary"]
+                total_cnt = sum_data.get("total", 0)
+                reply = f"Certainly, Boss. You have {total_cnt} notifications. {sum_data.get('summary', '')}"
 
             return {
                 "intent": "CHECK_NOTIFICATIONS",
@@ -233,8 +321,9 @@ class CommandRouter:
                 "stay_active": True
             }
 
-        # E. REMINDERS COMMANDS
-        # Matches: "remind me at 8 pm to ...", "set a reminder"
+        # -------------------------------------------------------------
+        # E. REMINDER COMMANDS
+        # -------------------------------------------------------------
         if clean.startswith("remind me") or clean.startswith("set a reminder"):
             clean_title = re.sub(r'^(?:remind me(?:\s+to)?|set a reminder(?:\s+to)?)\s+', '', clean).strip()
             time_part = "in 1 hour"
@@ -250,22 +339,23 @@ class CommandRouter:
                 "tool": "reminder_create",
                 "executed": True,
                 "success": True,
-                "message": f"Certainly. Reminder set: '{rem['title']}' for {due_formatted}.",
+                "message": f"Certainly, Boss. Reminder set: '{rem['title']}' for {due_formatted}.",
                 "data": rem,
                 "stay_active": True
             }
 
+        # -------------------------------------------------------------
         # F. MEMORY COMMANDS
-        # Matches: "remember that my ...", "what is my project?"
+        # -------------------------------------------------------------
         if clean.startswith("remember that") or clean.startswith("remember this"):
             fact = re.sub(r'^remember\s+(?:that|this:?)\s+', '', clean).strip()
             saved = memory_manager.add_memory(content=fact)
             return {
-                "intent": "STORE_MEMORY",
+                "intent": "MEMORY",
                 "tool": "memory_store",
                 "executed": True,
                 "success": True,
-                "message": "I'll remember that, Sanjith.",
+                "message": "I'll remember that, Boss.",
                 "data": saved,
                 "stay_active": True
             }
@@ -276,67 +366,70 @@ class CommandRouter:
             if project_mem:
                 clean_val = re.sub(r"^(?:that\s+)?(?:my\s+)?(?:main\s+|current\s+)?project\s+is\s+", "", project_mem["content"], flags=re.IGNORECASE)
                 return {
-                    "intent": "RECALL_MEMORY",
+                    "intent": "MEMORY",
                     "tool": "memory_recall",
                     "executed": True,
                     "success": True,
-                    "message": f"Your main project is {clean_val}.",
+                    "message": f"Your main project is {clean_val}, Boss.",
                     "stay_active": True
                 }
             elif memories:
                 return {
-                    "intent": "RECALL_MEMORY",
+                    "intent": "MEMORY",
                     "tool": "memory_recall",
                     "executed": True,
                     "success": True,
-                    "message": f"I recall: {memories[0]['content']}",
+                    "message": f"I recall: {memories[0]['content']}, Boss.",
                     "stay_active": True
                 }
             return {
-                "intent": "RECALL_MEMORY",
+                "intent": "MEMORY",
                 "tool": "memory_recall",
                 "executed": True,
                 "success": True,
-                "message": "I don't have any specific records stored for that yet.",
+                "message": "I don't have any specific records stored for that yet, Boss.",
                 "stay_active": True
             }
 
+        # -------------------------------------------------------------
         # G. SCREEN VISION COMMANDS
-        # Matches: "analyze my screen", "what's on my screen"
+        # -------------------------------------------------------------
         if any(kw in clean for kw in ["analyze screen", "analyze my screen", "what's on my screen", "explain this error on screen"]):
             res = screen_vision.capture_and_analyze(prompt=clean)
             return {
-                "intent": "ANALYZE_SCREEN",
+                "intent": "SCREEN_ANALYSIS",
                 "tool": "screen_vision",
                 "executed": True,
                 "success": res.get("success", False),
-                "message": res.get("analysis", "Screen analysis complete."),
+                "message": res.get("analysis", "Screen analysis complete, Boss."),
                 "data": res,
                 "stay_active": True
             }
 
+        # -------------------------------------------------------------
         # H. GENERAL WEB SEARCH
-        # Matches: "search the web for ...", "search google for ...", "search for ..."
+        # -------------------------------------------------------------
         search_match = re.search(r"^(?:search\s+(?:the\s+)?web\s+for|search\s+google\s+for|search\s+for|google)\s+(.+)", clean)
         if search_match:
             search_query = search_match.group(1).strip()
-            # Open search in default browser
             encoded_query = urllib.parse.quote(search_query)
             youtube_service._open_in_browser(f"https://www.google.com/search?q={encoded_query}")
             search_res = web_search_engine.search(search_query)
             return {
-                "intent": "WEB_SEARCH",
+                "intent": "SEARCH_WEB",
                 "tool": "web_search",
                 "executed": True,
                 "success": True,
-                "message": f"Searching Google for {search_query}.",
+                "message": f"Searching Google for {search_query}, Boss.",
                 "data": search_res,
                 "stay_active": True
             }
 
-        # Fallback to general conversational AI
+        # -------------------------------------------------------------
+        # I. GENERAL CONVERSATION FALLBACK
+        # -------------------------------------------------------------
         return {
-            "intent": "GENERAL_AI",
+            "intent": "GENERAL_CHAT",
             "executed": False,
             "stay_active": True,
             "text": original_text or clean

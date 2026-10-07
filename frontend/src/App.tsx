@@ -14,6 +14,7 @@ import { SettingsPage } from './pages/SettingsPage';
 
 import { JarvisState, ChatMessage, SystemMetrics } from './types';
 import { api } from './services/api';
+import { speechManager } from './services/SpeechManager';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
@@ -24,7 +25,14 @@ export const App: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [userName, setUserName] = useState(localStorage.getItem('jarvis_user_name') || 'Sanjith');
+  const [userName, setUserName] = useState<string>(() => {
+    const stored = localStorage.getItem('jarvis_user_name');
+    if (!stored || stored.toLowerCase() === 'sanjith' || stored.toLowerCase() === 'sir' || stored.toLowerCase() === 'user') {
+      localStorage.setItem('jarvis_user_name', 'Boss');
+      return 'Boss';
+    }
+    return stored;
+  });
 
   // Confirmation Modal
   const [confirmModal, setConfirmModal] = useState<{
@@ -36,7 +44,6 @@ export const App: React.FC = () => {
   const recognitionRef = useRef<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const sessionActiveRef = useRef<boolean>(false);
-  const isSpeakingRef = useRef<boolean>(false);
   const isProcessingRef = useRef<boolean>(false);
 
   // Sync refs
@@ -68,7 +75,7 @@ export const App: React.FC = () => {
           } else if (data.type === 'notification_alert') {
             setUnreadCount((c) => c + 1);
             if (data.notification?.should_speak && sessionActiveRef.current) {
-              speakWithBrowser(data.notification.proactive_message || data.notification.title);
+              speakResponse(data.notification.proactive_message || data.notification.title);
             }
           } else if (data.type === 'jarvis_session_update') {
             if (data.session) {
@@ -107,7 +114,7 @@ export const App: React.FC = () => {
   // Helper: Start / Stop listening safely
   const startListening = () => {
     if (!recognitionRef.current) return;
-    if (isSpeakingRef.current) return;
+    if (speechManager.isSpeaking()) return;
     try {
       recognitionRef.current.start();
     } catch (e) {
@@ -122,64 +129,26 @@ export const App: React.FC = () => {
     } catch (e) {}
   };
 
-  // 3. Browser Text-To-Speech with accurate onend callback
-  const speakWithBrowser = (text: string, onEndCallback?: () => void) => {
-    if (!('speechSynthesis' in window)) {
-      if (onEndCallback) onEndCallback();
-      return;
-    }
-
-    // Cancel any previous speech
-    window.speechSynthesis.cancel();
-
-    // Ensure mic is paused while speaking to prevent feedback
+  // 3. Centralized Single-Male-Voice TTS Output
+  const speakResponse = (text: string, onEndCallback?: () => void) => {
     stopListening();
-    isSpeakingRef.current = true;
     setJarvisState('SPEAKING');
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.05;
-    utterance.pitch = 0.95;
-
-    // Pick a natural British/English voice if available
-    const voices = window.speechSynthesis.getVoices();
-    const englishVoice = voices.find(v => 
-      (v.name.includes('Daniel') || v.name.includes('Oliver') || v.name.includes('Google UK English Male') || v.name.includes('Samantha') || v.name.includes('Arthur')) && v.lang.startsWith('en')
-    ) || voices.find(v => v.lang.startsWith('en'));
-
-    if (englishVoice) {
-      utterance.voice = englishVoice;
-    }
-
-    let ended = false;
-    const handleFinish = () => {
-      if (ended) return;
-      ended = true;
-      isSpeakingRef.current = false;
-      if (onEndCallback) {
-        onEndCallback();
-      } else if (sessionActiveRef.current) {
-        // Default transition: SPEAKING -> LISTENING!
-        setJarvisState('LISTENING');
-        startListening();
+    speechManager.speak(
+      text,
+      () => {
+        if (onEndCallback) {
+          onEndCallback();
+        } else if (sessionActiveRef.current) {
+          // Default transition: SPEAKING -> LISTENING
+          setJarvisState('LISTENING');
+          startListening();
+        }
+      },
+      () => {
+        setJarvisState('SPEAKING');
       }
-    };
-
-    utterance.onend = handleFinish;
-    utterance.onerror = (e) => {
-      console.warn("Speech synthesis notice:", e);
-      handleFinish();
-    };
-
-    // Safety timeout in case browser TTS event hangs
-    const maxDuration = Math.max(2500, Math.min(20000, text.length * 85));
-    setTimeout(() => {
-      if (!ended && isSpeakingRef.current) {
-        handleFinish();
-      }
-    }, maxDuration);
-
-    window.speechSynthesis.speak(utterance);
+    );
   };
 
   // 4. Continuous Speech Recognition
@@ -193,7 +162,7 @@ export const App: React.FC = () => {
 
       recognition.onstart = () => {
         setIsListening(true);
-        if (sessionActiveRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
+        if (sessionActiveRef.current && !speechManager.isSpeaking() && !isProcessingRef.current) {
           setJarvisState('LISTENING');
         }
       };
@@ -201,9 +170,9 @@ export const App: React.FC = () => {
       recognition.onend = () => {
         setIsListening(false);
         // Automatic restart loop: keep listening if session is active and not currently speaking
-        if (sessionActiveRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
+        if (sessionActiveRef.current && !speechManager.isSpeaking() && !isProcessingRef.current) {
           setTimeout(() => {
-            if (sessionActiveRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
+            if (sessionActiveRef.current && !speechManager.isSpeaking() && !isProcessingRef.current) {
               try {
                 recognition.start();
               } catch (e) {}
@@ -212,7 +181,7 @@ export const App: React.FC = () => {
         } else if (!sessionActiveRef.current) {
           // If sleeping, restart in low-overhead mode to catch wake word "Jarvis"
           setTimeout(() => {
-            if (!sessionActiveRef.current && !isSpeakingRef.current) {
+            if (!sessionActiveRef.current && !speechManager.isSpeaking()) {
               try {
                 recognition.start();
               } catch (e) {}
@@ -233,7 +202,7 @@ export const App: React.FC = () => {
       };
 
       recognition.onresult = (event: any) => {
-        if (isSpeakingRef.current) {
+        if (speechManager.isSpeaking()) {
           // Ignore echo while JARVIS is speaking
           return;
         }
@@ -280,7 +249,7 @@ export const App: React.FC = () => {
         if (cleanCommand && cleanCommand.toLowerCase() !== "wake up") {
           processDirective(cleanCommand);
         } else {
-          speakWithBrowser(`Yes, ${userName}? I'm listening.`, () => {
+          speakResponse(`Yes, ${userName}? I'm listening.`, () => {
             if (sessionActiveRef.current) {
               setJarvisState('LISTENING');
               startListening();
@@ -306,7 +275,7 @@ export const App: React.FC = () => {
       };
       setMessages((prev) => [...prev, userMsg]);
 
-      speakWithBrowser(`Understood, ${userName}. I'll stand by.`, () => {
+      speakResponse(`Understood, ${userName}. I'll stand by.`, () => {
         setJarvisState('SLEEPING');
       });
       return;
@@ -328,7 +297,7 @@ export const App: React.FC = () => {
       setSessionActive(false);
       sessionActiveRef.current = false;
       stopListening();
-      speakWithBrowser(`Understood, ${userName}. I'll stand by.`, () => {
+      speakResponse(`Understood, ${userName}. I'll stand by.`, () => {
         setJarvisState('SLEEPING');
       });
     } else {
@@ -336,7 +305,7 @@ export const App: React.FC = () => {
       setSessionActive(true);
       sessionActiveRef.current = true;
       setJarvisState('ACTIVATING');
-      speakWithBrowser(`JARVIS is online. I'm listening, ${userName}.`, () => {
+      speakResponse(`JARVIS is online. I'm listening, ${userName}.`, () => {
         if (sessionActiveRef.current) {
           setJarvisState('LISTENING');
           startListening();
@@ -372,7 +341,7 @@ export const App: React.FC = () => {
           message: res.reply,
           command: res.target || text
         });
-        speakWithBrowser(res.reply, () => {
+        speakResponse(res.reply, () => {
           if (sessionActiveRef.current) {
             setJarvisState('LISTENING');
             startListening();
@@ -403,7 +372,7 @@ export const App: React.FC = () => {
       setMessages((prev) => [...prev, jarvisMsg]);
 
       // Speak response, then AUTOMATICALLY return to LISTENING
-      speakWithBrowser(res.reply, () => {
+      speakResponse(res.reply, () => {
         if (res.is_sleep || !sessionActiveRef.current) {
           setJarvisState('SLEEPING');
         } else {
@@ -423,7 +392,7 @@ export const App: React.FC = () => {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages((prev) => [...prev, errorMsg]);
-      speakWithBrowser("I encountered an anomaly processing that directive.", () => {
+      speakResponse("I encountered an anomaly processing that directive.", () => {
         if (sessionActiveRef.current) {
           setJarvisState('LISTENING');
           startListening();
@@ -452,7 +421,7 @@ export const App: React.FC = () => {
         toolStatus: "COMPLETED"
       };
       setMessages((prev) => [...prev, jarvisMsg]);
-      speakWithBrowser(res.message || "Authorized action executed successfully.", () => {
+      speakResponse(res.message || "Authorized action executed successfully.", () => {
         if (sessionActiveRef.current) {
           setJarvisState('LISTENING');
           startListening();
