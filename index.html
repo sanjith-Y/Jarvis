@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>J.A.R.V.I.S. // AI Voice Assistant & Instagram Command Suite</title>
+  <title>J.A.R.V.I.S. // AI Voice Assistant</title>
   
   <!-- Font Awesome 6 for Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
@@ -129,26 +129,6 @@
           </div>
         </div>
 
-        <!-- Quick Launch Shortcuts -->
-        <div class="telemetry-card">
-          <div class="card-title-row">
-            <span class="card-title"><i class="fas fa-rocket"></i> QUICK LAUNCH</span>
-          </div>
-          <div class="quick-launcher-grid">
-            <button class="btn-hud-app" data-url="https://www.instagram.com">
-              <i class="fab fa-instagram"></i> Instagram
-            </button>
-            <button class="btn-hud-app" data-url="https://www.instagram.com/reels/">
-              <i class="fas fa-film"></i> Reels
-            </button>
-            <button class="btn-hud-app" data-url="https://www.instagram.com/direct/inbox/">
-              <i class="fas fa-paper-plane"></i> DMs
-            </button>
-            <button class="btn-hud-app" data-url="https://github.com/sanjith-Y/Jarvis">
-              <i class="fab fa-github"></i> Repository
-            </button>
-          </div>
-        </div>
 
       </div>
     </aside>
@@ -205,17 +185,16 @@
 
           <!-- Quick Suggestion Chips -->
           <div class="quick-chips-row">
-            <span class="command-chip" data-cmd="open instagram">📸 Open Instagram</span>
-            <span class="command-chip" data-cmd="go to reels">🎬 Go to Reels</span>
-            <span class="command-chip" data-cmd="generate caption">✨ Create AI Caption</span>
-            <span class="command-chip" data-cmd="download reel">📥 Download Reel</span>
+            <span class="command-chip" data-cmd="open terminal">💻 Open Terminal</span>
+            <span class="command-chip" data-cmd="open chrome">🌐 Open Chrome</span>
+            <span class="command-chip" data-cmd="play love songs on youtube">🎵 Play Music</span>
             <span class="command-chip" data-cmd="check battery">⚡ Check Battery</span>
             <span class="command-chip" data-cmd="what is the time">🕒 Current Time</span>
           </div>
 
           <!-- Input Bar -->
           <div class="chat-input-container">
-            <input type="text" id="chatInput" class="input-hud" placeholder="Speak with 'Hey Jarvis' or type a directive (e.g. 'Open Instagram', 'Create a caption')..." autocomplete="off" />
+            <input type="text" id="chatInput" class="input-hud" placeholder="Speak with 'Hey Jarvis' or type a directive (e.g. 'Open Terminal', 'Play love songs')..." autocomplete="off" />
             <button class="btn-send" id="btnSend" title="Transmit Directive">
               <i class="fas fa-arrow-up"></i>
             </button>
@@ -225,142 +204,6 @@
 
     </section>
 
-    <!-- RIGHT PANEL: THE INSTAGRAM SUITE ("INSTA") -->
-    <aside class="hud-panel instagram-suite-panel">
-      <div class="panel-header">
-        <div class="panel-title">
-          <i class="fab fa-instagram" style="color: #ff6599;"></i> INSTAGRAM COMMAND SUITE
-        </div>
-        <div class="panel-badge" style="color:#ff6599; border-color: rgba(255,101,153,0.3);">INSTA.V1</div>
-      </div>
-
-      <!-- Navigation Tabs -->
-      <div class="insta-tabs-bar">
-        <div class="insta-tab active" data-tab="download">
-          <i class="fas fa-download"></i> Inspector
-        </div>
-        <div class="insta-tab" data-tab="caption">
-          <i class="fas fa-magic"></i> AI Studio
-        </div>
-        <div class="insta-tab" data-tab="dm">
-          <i class="fas fa-paper-plane"></i> Quick DM
-        </div>
-        <div class="insta-tab" data-tab="planner">
-          <i class="fas fa-calendar-alt"></i> Queue
-        </div>
-      </div>
-
-      <div class="panel-body">
-        
-        <!-- TAB 1: MEDIA INSPECTOR & DOWNLOADER -->
-        <div class="tab-pane active" id="tab-download">
-          <div class="insta-form-group">
-            <label class="insta-label"><i class="fas fa-link"></i> Instagram Post / Reel URL</label>
-            <div class="insta-input-row">
-              <input type="text" id="instaMediaUrl" class="input-hud" placeholder="https://www.instagram.com/reel/..." />
-              <button class="btn-action-primary" id="btnInspectMedia">
-                <i class="fas fa-search"></i> Inspect
-              </button>
-            </div>
-          </div>
-
-          <!-- Media Preview & Download Card -->
-          <div class="preview-media-box" id="instaPreviewBox">
-            <i class="fab fa-instagram" style="font-size: 38px; color: rgba(225, 48, 108, 0.4); margin-bottom: 10px;"></i>
-            <p style="color: var(--text-dim); font-size: 13px;">
-              Paste any Instagram Reel or Post link above to fetch metadata, stream preview, and quick access.
-            </p>
-          </div>
-        </div>
-
-        <!-- TAB 2: AI CAPTION & HASHTAG STUDIO -->
-        <div class="tab-pane" id="tab-caption">
-          <div class="insta-form-group">
-            <label class="insta-label"><i class="fas fa-lightbulb"></i> Reel / Post Theme</label>
-            <input type="text" id="captionTopic" class="input-hud" placeholder="e.g., Coding Jarvis AI assistant on Mac" />
-          </div>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-            <div class="insta-form-group">
-              <label class="insta-label">Tone</label>
-              <select id="captionTone" class="select-hud">
-                <option value="sophisticated">Jarvis Sophisticated</option>
-                <option value="punchy">Punchy & Direct</option>
-                <option value="hype">Viral Hype 🔥</option>
-                <option value="casual">Casual & Relatable</option>
-              </select>
-            </div>
-            <div class="insta-form-group">
-              <label class="insta-label">Niche</label>
-              <select id="captionNiche" class="select-hud">
-                <option value="tech">Tech & AI</option>
-                <option value="fitness">Fitness & Iron</option>
-                <option value="lifestyle">Aesthetic Lifestyle</option>
-                <option value="business">Business Growth</option>
-                <option value="creative">Creative Arts</option>
-              </select>
-            </div>
-          </div>
-
-          <button class="btn-action-primary" id="btnGenerateCaption" style="width: 100%; justify-content: center;">
-            <i class="fas fa-wand-magic-sparkles"></i> Generate Caption & Tags
-          </button>
-
-          <!-- Generated Result Card -->
-          <div class="result-box-hud" id="captionResultBox" style="display: none;">
-            <button class="copy-btn" id="btnCopyCaption">COPY ALL</button>
-            <label class="insta-label" style="margin-bottom: 8px;">Generated Output:</label>
-            <textarea id="captionOutput" class="textarea-hud" style="width: 100%; min-height: 120px;"></textarea>
-            
-            <div style="margin-top: 10px;">
-              <span class="insta-label">Targeted Hashtags:</span>
-              <div class="tags-cloud" id="tagsContainer"></div>
-            </div>
-
-            <button class="btn-hud-app" id="btnAddSchedule" style="width: 100%; margin-top: 10px; justify-content: center;">
-              <i class="fas fa-calendar-plus"></i> Add to Queue Planner
-            </button>
-          </div>
-        </div>
-
-        <!-- TAB 3: DIRECT MESSAGE (DM) QUICK LAUNCH -->
-        <div class="tab-pane" id="tab-dm">
-          <div class="insta-form-group">
-            <label class="insta-label"><i class="fas fa-at"></i> Target Handle / Username</label>
-            <div class="insta-input-row">
-              <input type="text" id="dmUsername" class="input-hud" placeholder="e.g. sanjith or @handle" />
-              <button class="btn-action-primary" id="btnLaunchDm">
-                <i class="fas fa-paper-plane"></i> Launch
-              </button>
-            </div>
-          </div>
-
-          <div class="telemetry-card" style="margin-top: 10px;">
-            <div class="card-title"><i class="fas fa-comment-dots"></i> QUICK DM TEMPLATES</div>
-            <div style="display:flex; flex-direction:column; gap:8px; margin-top:10px;">
-              <button class="btn-hud-app" onclick="document.getElementById('captionTopic').value='Collaboration inquiry'; window.JarvisApp.switchInstaTab('caption');">
-                🤝 Collaboration Outreach
-              </button>
-              <button class="btn-hud-app" onclick="document.getElementById('captionTopic').value='Product Feedback'; window.JarvisApp.switchInstaTab('caption');">
-                💡 Feedback Request
-              </button>
-              <button class="btn-hud-app" onclick="document.getElementById('captionTopic').value='Networking connection'; window.JarvisApp.switchInstaTab('caption');">
-                🚀 Founder Networking
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- TAB 4: POST QUEUE & SCHEDULER -->
-        <div class="tab-pane" id="tab-planner">
-          <div class="insta-label"><i class="fas fa-tasks"></i> Scheduled Content Pipeline</div>
-          <div class="queue-list" id="queueList">
-            <!-- Populated via localStorage -->
-          </div>
-        </div>
-
-      </div>
-    </aside>
 
   </main>
 
@@ -411,7 +254,6 @@
   <!-- Scripts -->
   <script src="/static/js/audio.js"></script>
   <script src="/static/js/voice.js"></script>
-  <script src="/static/js/instagram.js"></script>
   <script src="/static/js/ai.js"></script>
   <script src="/static/js/app.js"></script>
 </body>
