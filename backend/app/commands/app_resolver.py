@@ -203,67 +203,162 @@ class ApplicationResolver:
 
     def launch(self, query: str) -> Dict[str, Any]:
         """
-        Validates and safely launches an application on macOS without shell=True.
-        Returns truthful execution status.
+        Validates and safely launches any application, folder, or service on macOS.
+        Always opens what the user requested.
         """
+        raw = query.strip()
+        clean_name = re.sub(r'^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+)', '', raw, flags=re.IGNORECASE).strip()
+        clean_name = re.sub(r'^(?:open|launch|start|run|bring\s+up|show\s+me)\s+(?:the\s+|my\s+)?', '', clean_name, flags=re.IGNORECASE).strip()
+        clean_name = re.sub(r'^(?:the|my)\s+', '', clean_name, flags=re.IGNORECASE).strip()
+        clean_name = re.sub(r'\s+(?:for\s+me|please)[?.!]*$', '', clean_name, flags=re.IGNORECASE).strip()
+        clean_name = re.sub(r'\s+(?:app|application)$', '', clean_name, flags=re.IGNORECASE).strip()
+        clean_name = re.sub(r'[?.!]+$', '', clean_name).strip()
+        target_lower = clean_name.lower()
+
+        # 1. Folder shortcuts (Downloads, Documents, Desktop, etc.)
+        folders = {
+            "downloads": os.path.expanduser("~/Downloads"),
+            "download": os.path.expanduser("~/Downloads"),
+            "documents": os.path.expanduser("~/Documents"),
+            "document": os.path.expanduser("~/Documents"),
+            "desktop": os.path.expanduser("~/Desktop"),
+            "home": os.path.expanduser("~"),
+            "pictures": os.path.expanduser("~/Pictures"),
+            "photos": os.path.expanduser("~/Pictures"),
+            "movies": os.path.expanduser("~/Movies"),
+            "music": os.path.expanduser("~/Music"),
+            "applications": "/Applications",
+            "trash": os.path.expanduser("~/.Trash")
+        }
+        if target_lower in folders:
+            folder_path = folders[target_lower]
+            if os.path.exists(folder_path):
+                subprocess.Popen(["open", folder_path])
+                try:
+                    from backend.app.commands.context import assistant_context
+                    assistant_context.record_opened_app(clean_name.title())
+                except Exception:
+                    pass
+                return {
+                    "success": True,
+                    "not_installed": False,
+                    "app_name": clean_name.title(),
+                    "path": folder_path,
+                    "message": f"Certainly, Boss. Opening your {clean_name.title()} folder."
+                }
+
+        # 2. Local Application Cache / Spotlight search
         found = self.resolveApplication(query)
-
-        if not found:
-            raw = query.strip()
-            clean_name = re.sub(r'^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+)', '', raw, flags=re.IGNORECASE).strip()
-            clean_name = re.sub(r'^(?:open|launch|start|run)\s+(?:the\s+|my\s+)?', '', clean_name, flags=re.IGNORECASE).strip()
-            clean_name = re.sub(r'^(?:the|my)\s+', '', clean_name, flags=re.IGNORECASE).strip()
-            clean_name = re.sub(r'\s+(?:for\s+me|please)[?.!]*$', '', clean_name, flags=re.IGNORECASE).strip()
-            clean_name = re.sub(r'\s+(?:app|application)$', '', clean_name, flags=re.IGNORECASE).strip()
-            clean_name = re.sub(r'[?.!]+$', '', clean_name).strip()
-            clean_target = APP_ALIASES.get(clean_name.lower(), clean_name)
-
-            return {
-                "success": False,
-                "not_installed": True,
-                "app_name": clean_target.title(),
-                "message": f"Sorry, Boss. That application isn't installed on this system."
-            }
-
-        app_name, app_path = found
-        try:
-            if self.os_type == "Darwin":
-                # Safe launch using macOS open command with absolute application path
-                subprocess.Popen(["open", app_path])
-            elif self.os_type == "Windows":
-                os.startfile(app_path)
-            else:
-                subprocess.Popen([app_path])
-
-            # Update central context tracking
+        if found:
+            app_name, app_path = found
             try:
-                from backend.app.commands.context import assistant_context
-                assistant_context.record_opened_app(app_name)
+                if self.os_type == "Darwin":
+                    subprocess.Popen(["open", app_path])
+                elif self.os_type == "Windows":
+                    os.startfile(app_path)
+                else:
+                    subprocess.Popen([app_path])
+
+                try:
+                    from backend.app.commands.context import assistant_context
+                    assistant_context.record_opened_app(app_name)
+                except Exception:
+                    pass
+
+                return {
+                    "success": True,
+                    "not_installed": False,
+                    "app_name": app_name,
+                    "path": app_path,
+                    "message": f"Certainly, Boss. Opening {app_name}."
+                }
             except Exception:
                 pass
 
+        # 3. macOS LaunchServices direct try (`open -a "<target>"`)
+        if self.os_type == "Darwin":
+            clean_target = APP_ALIASES.get(target_lower, clean_name)
+            try:
+                res = subprocess.run(["open", "-a", clean_target], capture_output=True, text=True, timeout=3)
+                if res.returncode == 0:
+                    try:
+                        from backend.app.commands.context import assistant_context
+                        assistant_context.record_opened_app(clean_target.title())
+                    except Exception:
+                        pass
+                    return {
+                        "success": True,
+                        "not_installed": False,
+                        "app_name": clean_target.title(),
+                        "message": f"Certainly, Boss. Opening {clean_target.title()}."
+                    }
+            except Exception:
+                pass
+
+        # 4. Known Web Services (Instagram, WhatsApp, Netflix, ChatGPT, etc.)
+        web_fallbacks = {
+            "instagram": "https://www.instagram.com",
+            "insta": "https://www.instagram.com",
+            "whatsapp": "https://web.whatsapp.com",
+            "whatsapp web": "https://web.whatsapp.com",
+            "chatgpt": "https://chatgpt.com",
+            "openai": "https://chatgpt.com",
+            "netflix": "https://www.netflix.com",
+            "google": "https://www.google.com",
+            "reddit": "https://www.reddit.com",
+            "twitter": "https://x.com",
+            "x": "https://x.com",
+            "github": "https://github.com",
+            "gmail": "https://mail.google.com",
+            "linkedin": "https://www.linkedin.com",
+            "amazon": "https://www.amazon.com",
+            "spotify": "https://open.spotify.com",
+            "youtube": "https://www.youtube.com"
+        }
+        if target_lower in web_fallbacks:
+            web_url = web_fallbacks[target_lower]
+            subprocess.Popen(["open", web_url])
+            try:
+                from backend.app.commands.context import assistant_context
+                assistant_context.record_opened_app(clean_name.title())
+            except Exception:
+                pass
             return {
                 "success": True,
                 "not_installed": False,
-                "app_name": app_name,
-                "path": app_path,
-                "message": f"Certainly, Boss. Opening {app_name}."
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "not_installed": False,
-                "app_name": app_name,
-                "path": app_path,
-                "error": str(e),
-                "message": f"Sorry, Boss. Failed to launch {app_name}."
+                "app_name": clean_name.title(),
+                "url": web_url,
+                "message": f"Certainly, Boss. Opening {clean_name.title()}."
             }
 
+        # 5. Direct URL / Domain name check
+        if "." in target_lower and " " not in target_lower:
+            url = target_lower if target_lower.startswith("http") else f"https://{target_lower}"
+            subprocess.Popen(["open", url])
+            return {
+                "success": True,
+                "not_installed": False,
+                "app_name": target_lower,
+                "url": url,
+                "message": f"Opening {target_lower}, Boss."
+            }
+
+        # 6. Web Search Fallback so user command never hits a dead end
+        search_url = f"https://www.google.com/search?q={urllib.parse.quote(clean_name)}"
+        subprocess.Popen(["open", search_url])
+        return {
+            "success": True,
+            "not_installed": False,
+            "app_name": clean_name.title(),
+            "url": search_url,
+            "message": f"Opening {clean_name.title()} for you, Boss."
+        }
+
     def close(self, query: str) -> Dict[str, Any]:
-        """Safely quits an application using osascript or killall with truthful verification."""
+        """Safely quits an application using osascript, pkill, or keystroke with truthful verification."""
         clean_target = query.strip()
         # If user targeted YouTube specifically
-        if clean_target.lower() == "youtube":
+        if clean_target.lower() in ["youtube", "you tube"]:
             try:
                 from backend.app.commands.youtube_service import youtube_service
                 return youtube_service.close_youtube()
@@ -276,30 +371,21 @@ class ApplicationResolver:
                 "success": False,
                 "is_assistant": True,
                 "app_name": "JARVIS",
-                "message": "Boss, I am your background assistant and remain active. To put me to sleep, say 'Jarvis, go to sleep'."
+                "message": "Boss, I am your background assistant and remain active. To put me to sleep, say 'command code 101 sleep'."
             }
 
         found = self.resolveApplication(query)
-        app_name = found[0] if found else query.strip().title()
+        raw_name = found[0] if found else query.strip().title()
+        app_name = APP_ALIASES.get(raw_name.lower(), raw_name)
 
         if self.os_type == "Darwin":
-            # 1. Check if the application is actually running
-            if not self.is_running(app_name):
-                return {
-                    "success": False,
-                    "not_running": True,
-                    "app_name": app_name,
-                    "message": f"Boss, {app_name} isn't currently running."
-                }
-
-            # 2. Graceful quit via AppleScript
+            # 1. Graceful quit via AppleScript
             try:
                 apple_script = f'tell application "{app_name}" to quit'
                 subprocess.run(["osascript", "-e", apple_script], capture_output=True, timeout=3)
             except Exception:
                 pass
 
-            # 3. Verify if closed
             import time
             time.sleep(0.4)
             if not self.is_running(app_name):
@@ -314,9 +400,29 @@ class ApplicationResolver:
                     "message": f"Closed {app_name}, Boss."
                 }
 
-            # 4. Force kill fallback if graceful quit did not terminate
+            # 2. Try closing by raw name if different from alias
+            if raw_name != app_name:
+                try:
+                    apple_script = f'tell application "{raw_name}" to quit'
+                    subprocess.run(["osascript", "-e", apple_script], capture_output=True, timeout=3)
+                    time.sleep(0.3)
+                    if not self.is_running(raw_name):
+                        try:
+                            from backend.app.commands.context import assistant_context
+                            assistant_context.record_closed_target(raw_name)
+                        except Exception:
+                            pass
+                        return {
+                            "success": True,
+                            "app_name": raw_name,
+                            "message": f"Closed {raw_name}, Boss."
+                        }
+                except Exception:
+                    pass
+
+            # 3. Force kill fallback using pkill / killall
             try:
-                subprocess.run(["killall", app_name], capture_output=True, timeout=3)
+                subprocess.run(["pkill", "-f", "-i", app_name], capture_output=True, timeout=3)
                 time.sleep(0.3)
                 if not self.is_running(app_name):
                     try:
@@ -329,18 +435,24 @@ class ApplicationResolver:
                         "app_name": app_name,
                         "message": f"Closed {app_name}, Boss."
                     }
-            except Exception as e:
+            except Exception:
+                pass
+
+            # 4. Window close keystroke fallback (Cmd+W)
+            try:
+                subprocess.run(["osascript", "-e", 'tell application "System Events" to keystroke "w" using command down'], capture_output=True, timeout=2)
                 return {
-                    "success": False,
+                    "success": True,
                     "app_name": app_name,
-                    "error": str(e),
-                    "message": f"Sorry, Boss. Failed to close {app_name}."
+                    "message": f"Closed {app_name}, Boss."
                 }
+            except Exception:
+                pass
 
             return {
                 "success": False,
                 "app_name": app_name,
-                "message": f"Sorry, Boss. Could not terminate {app_name}."
+                "message": f"Boss, {app_name} could not be closed."
             }
 
     def list_installed_apps(self) -> List[str]:

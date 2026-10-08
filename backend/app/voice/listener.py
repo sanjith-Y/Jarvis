@@ -134,8 +134,8 @@ class NativeVoiceListener:
                         # Pop available audio chunk
                         chunk = audio_buffer.pop(0)
 
-                        if self.is_speaking or not self.is_active:
-                            # Discard incoming audio while speaking to avoid self-echo
+                        # Discard incoming audio while speaking to avoid self-echo
+                        if self.is_speaking:
                             continue
 
                         rms = audioop.rms(chunk, 2)
@@ -174,22 +174,34 @@ class NativeVoiceListener:
             transcript = self.recognizer.recognize_google(audio_data)
             transcript = transcript.strip()
             if not transcript:
-                self._notify_state("LISTENING")
+                self._notify_state("LISTENING" if self.is_active else "SLEEPING")
                 return
 
-            print(f"\n[MIC HEARD]: \"{transcript}\"")
+            print(f"\n[MIC HEARD] (Active={self.is_active}): \"{transcript}\"")
 
             # Route command through central CommandRouter
             self._notify_state("EXECUTING")
             result = command_router.route(transcript)
 
+            # If currently in SLEEP mode: only respond and wake up if it's a wake command
+            if not self.is_active:
+                if result.get("is_wake"):
+                    self.activate()
+                    msg = result.get("message", "Command code 101 verified. System fully awake and standing by, Boss.")
+                    self._speak_sync(msg)
+                else:
+                    # Ignore ambient chatter while in sleep mode
+                    self._notify_state("SLEEPING")
+                return
+
+            # If currently ACTIVE:
             if result.get("is_sleep"):
                 self.deactivate()
-                self._speak_sync(result.get("message", "Understood, Boss. I'll stand by."))
+                msg = result.get("message", "Command code 101 acknowledged. Subsystems entering sleep mode. Standing by for command code 101 awake, Boss.")
+                self._speak_sync(msg)
                 return
 
             if result.get("is_wake"):
-                self.activate()
                 self._speak_sync(result.get("message", "Yes, Boss?"))
                 return
 

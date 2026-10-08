@@ -44,11 +44,12 @@ class AssistantContextManager:
 
     def get_close_candidate(self) -> Optional[str]:
         """
-        Resolves the contextual target for 'close the app', 'close it', 'quit it', 'exit it'.
+        Resolves the contextual target for 'close the app', 'close it', 'quit it', 'exit it', 'close'.
         Priority:
         1. If YouTube was the last targeted entity -> 'YouTube'
         2. If an application was last opened -> lastOpenedApplication
         3. activeTargetApplication
+        4. Frontmost active macOS user application
         """
         if self.lastYouTubeTarget == "YouTube":
             return "YouTube"
@@ -56,6 +57,18 @@ class AssistantContextManager:
             return self.lastOpenedApplication
         if self.activeTargetApplication:
             return self.activeTargetApplication
+
+        # On macOS: inspect frontmost application process
+        try:
+            import subprocess
+            script = 'tell application "System Events" to get name of first application process whose frontmost is true'
+            front = subprocess.check_output(["osascript", "-e", script], text=True, stderr=subprocess.DEVNULL).strip()
+            ignored = ["Finder", "Electron", "Antigravity", "Python", "Python3", "Jarvis", "Terminal", "System Events", "loginwindow"]
+            if front and front not in ignored:
+                return front
+        except Exception:
+            pass
+
         return None
 
     def log_debug_entry(self, entry: Dict[str, Any]):

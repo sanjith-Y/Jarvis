@@ -66,7 +66,51 @@ class CommandRouter:
             changed = (clean != prev)
 
         # -------------------------------------------------------------
-        # 1. SLEEP & DEACTIVATE COMMANDS
+        # 0A. COMMAND CODE 101 AWAKE / PROTOCOL 101 AWAKE
+        # e.g. "Command code 101 awake", "Code 101 awake", "101 awake", "Command code 101 wake up"
+        # -------------------------------------------------------------
+        is_code_101_wake = (
+            bool(re.search(r'\b(?:command\s+)?code\s+(?:101|one\s+zero\s+one|one\s+hundred\s+(?:and\s+)?one|one\s+oh\s+one)\s+(?:awake|wake(?:\s+up)?)\b', lower)) or
+            bool(re.search(r'\b(?:command\s+)?code\s+(?:101|one\s+zero\s+one|one\s+hundred\s+(?:and\s+)?one|one\s+oh\s+one)\s+(?:awake|wake(?:\s+up)?)\b', clean)) or
+            ("101" in lower and ("awake" in lower or "wake" in lower)) or
+            clean in ["command code 101 awake", "code 101 awake", "command code 101 wake", "command code 101 wake up", "code 101 wake up", "101 awake"]
+        )
+
+        # -------------------------------------------------------------
+        # 0B. COMMAND CODE 101 SLEEP / PROTOCOL 101 SLEEP
+        # e.g. "Command code 101 sleep", "Code 101 sleep", "Command code 101 go to sleep"
+        # -------------------------------------------------------------
+        is_code_101_sleep = (
+            bool(re.search(r'\b(?:command\s+)?code\s+(?:101|one\s+zero\s+one|one\s+hundred\s+(?:and\s+)?one|one\s+oh\s+one)\s+(?:sleep|go\s+to\s+sleep|standby)\b', lower)) or
+            bool(re.search(r'\b(?:command\s+)?code\s+(?:101|one\s+zero\s+one|one\s+hundred\s+(?:and\s+)?one|one\s+oh\s+one)\s+(?:sleep|go\s+to\s+sleep|standby)\b', clean)) or
+            ("101" in lower and ("sleep" in lower or "standby" in lower)) or
+            clean in ["command code 101 sleep", "code 101 sleep", "command code 101 go to sleep", "101 sleep", "code 101 standby"]
+        )
+
+        if is_code_101_wake:
+            assistant_context.set_active(True)
+            return self._dispatch_result(raw_text, text, clean, {
+                "intent": "WAKE",
+                "tool": "session_control",
+                "is_wake": True,
+                "success": True,
+                "message": "Command code 101 verified. System fully awake and standing by, Boss.",
+                "stay_active": True
+            })
+
+        if is_code_101_sleep:
+            assistant_context.set_active(False)
+            return self._dispatch_result(raw_text, text, clean, {
+                "intent": "SLEEP",
+                "tool": "session_control",
+                "is_sleep": True,
+                "success": True,
+                "message": "Command code 101 acknowledged. Subsystems entering sleep mode. Standing by for command code 101 awake, Boss.",
+                "stay_active": False
+            })
+
+        # -------------------------------------------------------------
+        # 1. GENERAL SLEEP & DEACTIVATE COMMANDS
         # -------------------------------------------------------------
         sleep_triggers = [
             "sleep", "go to sleep", "stop listening", "stop jarvis", "sleep jarvis",
@@ -81,39 +125,54 @@ class CommandRouter:
                 "tool": "session_control",
                 "is_sleep": True,
                 "success": True,
-                "message": "Understood, Boss. I'll stand by.",
+                "message": "Understood, Boss. Subsystems entering sleep mode. Say 'Command code 101 Awake' or 'Jarvis' to wake me.",
                 "stay_active": False
             })
 
         # -------------------------------------------------------------
-        # 2. WAKE WORD ACKNOWLEDGMENT ("Jarvis", "Hey Jarvis")
+        # 2. GENERAL WAKE WORD ACKNOWLEDGMENT ("Jarvis", "Hey Jarvis", "Awake")
         # -------------------------------------------------------------
-        if clean in ["", "wake up", "are you there", "hello", "hi"]:
+        if clean in ["", "wake up", "awake", "are you awake", "are you there", "hello", "hi"]:
             assistant_context.set_active(True)
             return self._dispatch_result(raw_text, text, clean, {
                 "intent": "WAKE",
                 "tool": "session_control",
                 "is_wake": True,
                 "success": True,
-                "message": "Yes, Boss?",
+                "message": "Yes, Boss? All subsystems are online and listening.",
                 "stay_active": True
             })
 
         # -------------------------------------------------------------
-        # 3. CLOSE APPLICATION & CONTEXTUAL CLOSE COMMANDS (Priority 2)
-        # e.g. "Close WhatsApp", "Close Chrome", "Close YouTube", "Close it", "Close the app", "Quit it"
+        # 3. CLOSE APPLICATION & CONTEXTUAL CLOSE COMMANDS
+        # e.g. "Close WhatsApp", "Close Chrome", "Close YouTube", "Close it", "Close the app", "Quit it", "Close"
         # -------------------------------------------------------------
-        close_match = re.search(r"^(?:close|quit|exit|terminate|kill)\s+(?:the\s+|my\s+)?(.+)", clean)
-        contextual_close = clean in ["close it", "close the app", "quit it", "exit it", "close that", "quit the app", "exit the app"]
+        close_patterns = [
+            r'^(?:close|quit|exit|terminate|kill|shut(?:\s+down)?)\s+(?:the\s+|my\s+)?(.+)',
+            r'^(?:can\s+you\s+)?(?:please\s+)?(?:close|quit|exit|terminate|kill)\s+(?:the\s+|my\s+)?(.+)',
+        ]
+        close_match = None
+        for cp in close_patterns:
+            m = re.search(cp, clean)
+            if m:
+                close_match = m
+                break
+
+        contextual_close = clean in [
+            "close", "close it", "close this", "close that", "close now",
+            "close the app", "close app", "close current", "close window", "close current app",
+            "quit", "quit it", "quit this", "quit that", "quit the app", "quit app",
+            "exit", "exit it", "exit the app", "terminate it", "kill it"
+        ] or (clean.startswith("close ") and clean.endswith("it"))
 
         if close_match or contextual_close:
             raw_target = close_match.group(1).strip() if close_match else ""
-            target = re.sub(r'\s+(?:app|application)$', '', raw_target, flags=re.IGNORECASE).strip()
+            target = re.sub(r'\s+(?:app|application|window)$', '', raw_target, flags=re.IGNORECASE).strip()
             target = re.sub(r'\s+(?:for\s+me|please)[?.!]*$', '', target, flags=re.IGNORECASE).strip()
             target = re.sub(r'[?.!]+$', '', target).strip()
 
-            # Contextual resolution if user said "close it", "close the app", etc.
-            if contextual_close or target in ["it", "this", "the app", "that", "app"]:
+            # Contextual resolution if user said "close it", "close", "close the app", etc.
+            if contextual_close or target in ["", "it", "this", "the app", "that", "app", "window", "current", "now", "it now", "it please"]:
                 candidate = assistant_context.get_close_candidate()
                 if candidate:
                     target = candidate
@@ -127,6 +186,10 @@ class CommandRouter:
                         "message": "There is no active application to close, Boss.",
                         "stay_active": True
                     })
+            else:
+                clean_sub = re.split(r'\b(?:jarvis|jarvin|travis|java|javis|close|quit|exit|i\s+said|open)\b', target, flags=re.IGNORECASE)
+                if clean_sub and clean_sub[0].strip():
+                    target = clean_sub[0].strip()
 
             # Check if user specifically requested closing YouTube
             if target.lower() == "youtube":
@@ -188,6 +251,9 @@ class CommandRouter:
             target = re.sub(r'\s+(?:app|application)$', '', raw_target, flags=re.IGNORECASE).strip()
             target = re.sub(r'\s+(?:for\s+me|please)[?.!]*$', '', target, flags=re.IGNORECASE).strip()
             target = re.sub(r'[?.!]+$', '', target).strip()
+            clean_sub = re.split(r'\b(?:jarvis|jarvin|travis|java|javis|open|launch|start|run|i\s+said|close)\b', target, flags=re.IGNORECASE)
+            if clean_sub and clean_sub[0].strip():
+                target = clean_sub[0].strip()
 
             # First: check if it's an explicit YouTube search command
             if target.startswith("youtube and search") or target.startswith("youtube to search"):

@@ -54,10 +54,21 @@ class JarvisAICore {
       changed = (clean !== prev);
     }
 
-    // Sleep commands
-    if (["stop listening", "go to sleep", "sleep jarvis", "deactivate jarvis"].some(s => clean.includes(s))) {
+    // Command Code 101 Awake
+    if (lower.includes("101") && (lower.includes("awake") || lower.includes("wake")) || clean === "awake") {
       return {
-        reply: "Understood, Boss. I'll stand by.",
+        reply: "Command code 101 verified. System fully awake and standing by, Boss.",
+        action: "session_control",
+        status: "COMPLETED",
+        intent: "WAKE",
+        is_wake: true
+      };
+    }
+
+    // Command Code 101 Sleep
+    if (lower.includes("101") && (lower.includes("sleep") || lower.includes("standby"))) {
+      return {
+        reply: "Command code 101 acknowledged. Subsystems entering sleep mode. Standing by for command code 101 awake, Boss.",
         action: "session_control",
         status: "COMPLETED",
         intent: "SLEEP",
@@ -65,14 +76,39 @@ class JarvisAICore {
       };
     }
 
-    // Wake word
+    // General Sleep commands
+    if (["stop listening", "go to sleep", "sleep jarvis", "deactivate jarvis", "sleep"].some(s => clean.includes(s))) {
+      return {
+        reply: "Understood, Boss. Subsystems entering sleep mode. Say 'Command code 101 Awake' or 'Jarvis' to wake me.",
+        action: "session_control",
+        status: "COMPLETED",
+        intent: "SLEEP",
+        is_sleep: true
+      };
+    }
+
+    // General Wake word
     if (clean === "" || clean === "wake up") {
       return {
-        reply: "Yes, Boss?",
+        reply: "Yes, Boss? All subsystems are online and listening.",
         action: "session_control",
         status: "COMPLETED",
         intent: "WAKE",
         is_wake: true
+      };
+    }
+
+    // Close Application / Close it
+    const closeMatch = clean.match(/^(?:close|quit|exit|terminate|kill)\s+(?:the\s+|my\s+)?(.+)/i);
+    const isContextualClose = ["close", "close it", "close that", "close the app", "quit it", "exit it"].includes(clean);
+    if (closeMatch || isContextualClose) {
+      const target = closeMatch ? closeMatch[1].trim() : "it";
+      return {
+        reply: target === "it" ? "Closing active window, Boss." : `Closing ${target}, Boss.`,
+        action: "application_closer",
+        status: "COMPLETED",
+        intent: "CLOSE_APPLICATION",
+        result: { app_name: target }
       };
     }
 
