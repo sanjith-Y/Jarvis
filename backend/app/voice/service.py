@@ -8,8 +8,8 @@ from backend.app.config import settings
 class VoiceService:
     def __init__(self):
         self.os_type = platform.system()
-        self.enabled = settings.ENABLE_VOICE
-        self.voice_name = settings.VOICE_NAME
+        self.enabled = True
+        self.voice_name = settings.VOICE_NAME or "Daniel"
 
     def speak(self, text: str, voice: Optional[str] = None) -> Dict[str, Any]:
         if not self.enabled or not text:

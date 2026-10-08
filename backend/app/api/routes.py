@@ -212,6 +212,11 @@ async def chat_endpoint(req: ChatRequest):
 async def speak_endpoint(text: str = Body(..., embed=True), voice: Optional[str] = Body(None, embed=True)):
     return voice_service.speak(text, voice)
 
+@router.post("/system/say")
+async def system_say_endpoint(data: Dict[str, Any] = Body(...)):
+    text = data.get("text", "")
+    return voice_service.speak(text)
+
 @router.post("/voice/stop")
 async def stop_voice_endpoint():
     return {"stopped": voice_service.stop()}

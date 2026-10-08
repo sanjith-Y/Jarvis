@@ -116,70 +116,38 @@ class SpeechManager {
    * Cancels any existing playback before starting and uses only the verified male voice.
    */
   public speak(text: string, onEnd?: () => void, onStart?: () => void): void {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      if (onEnd) onEnd();
-      return;
-    }
-
     if (!text || !text.trim()) {
       if (onEnd) onEnd();
       return;
     }
 
-    // Always stop and cancel existing speech to prevent overlapping voices
-    this.cancelCurrentSpeech();
+    // Strictly cancel any existing browser speech synthesis to ensure zero duplicate audio
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
 
-    // Clean text of markdown characters
     const cleanText = text.replace(/[*#_`]/g, '').trim();
-
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.rate = 1.02;
-    utterance.pitch = 0.95;
-
-    const voice = this.getSelectedVoice();
-    if (voice) {
-      utterance.voice = voice;
-    }
-
-    this.activeUtterance = utterance;
-
-    let finished = false;
-    const handleFinish = () => {
-      if (finished) return;
-      finished = true;
-      this.activeUtterance = null;
-      if (this.safetyTimeout) {
-        clearTimeout(this.safetyTimeout);
-        this.safetyTimeout = null;
-      }
-      this.isSpeakingState = false;
-      if (onEnd) onEnd();
-    };
-
-    utterance.onstart = () => {
-      this.isSpeakingState = true;
-      if (onStart) onStart();
-    };
-
-    utterance.onend = handleFinish;
-    utterance.onerror = (e) => {
-      console.warn("Speech error or cancelled:", e);
-      handleFinish();
-    };
-
-    // Safety timeout in case browser TTS event hangs
-    const estimatedDuration = Math.max(2000, Math.min(25000, cleanText.length * 80));
-    this.safetyTimeout = setTimeout(() => {
-      if (!finished && this.isSpeakingState) {
-        handleFinish();
-      }
-    }, estimatedDuration);
-
     this.isSpeakingState = true;
-    if (window.speechSynthesis.paused) {
-      window.speechSynthesis.resume();
-    }
-    window.speechSynthesis.speak(utterance);
+    if (onStart) onStart();
+
+    // Route to single native macOS speech synthesizer (say -v Daniel) via backend
+    fetch('/api/system/say', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: cleanText })
+    })
+      .catch((e) => {
+        console.warn("Native TTS request error:", e);
+      })
+      .finally(() => {
+        // Approximate speech duration based on text length (~70ms per word + base)
+        const wordCount = cleanText.split(/\s+/).length;
+        const delayMs = Math.max(1200, Math.min(15000, wordCount * 360));
+        setTimeout(() => {
+          this.isSpeakingState = false;
+          if (onEnd) onEnd();
+        }, delayMs);
+      });
   }
 }
 

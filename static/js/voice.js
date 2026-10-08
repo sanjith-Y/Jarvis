@@ -106,78 +106,9 @@ class JarvisVoiceEngine {
   }
 
   initRecognition() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn("Speech recognition not supported in this browser.");
-      return;
-    }
-
-    // Single speech recognition instance
-    if (this.recognition) return;
-
-    this.recognition = new SpeechRecognition();
-    this.recognition.continuous = true;
-    this.recognition.interimResults = false;
-    this.recognition.lang = 'en-US';
-
-    this.recognition.onstart = () => {
-      this.isListening = true;
-      if (!this.isSpeaking && this.onStatusChangeCallback) {
-        this.onStatusChangeCallback('listening');
-      }
-    };
-
-    this.recognition.onend = () => {
-      this.isListening = false;
-      // Auto-restart loop if continuous mode is active and not currently speaking
-      if (this.continuousMode && !this.isSpeaking) {
-        clearTimeout(this.restartTimeout);
-        this.restartTimeout = setTimeout(() => {
-          if (this.continuousMode && !this.isSpeaking) {
-            try {
-              this.recognition.start();
-            } catch (e) {}
-          }
-        }, 200);
-      } else if (!this.continuousMode && !this.isSpeaking) {
-        if (this.onStatusChangeCallback) this.onStatusChangeCallback('idle');
-      }
-    };
-
-    this.recognition.onerror = (event) => {
-      console.warn("Speech recognition error:", event.error);
-      if (event.error === 'not-allowed') {
-        this.continuousMode = false;
-        if (this.onStatusChangeCallback) this.onStatusChangeCallback('idle');
-        return;
-      }
-      // Auto-recover from no-speech, network, audio-capture
-      if (this.continuousMode && !this.isSpeaking) {
-        clearTimeout(this.restartTimeout);
-        this.restartTimeout = setTimeout(() => {
-          if (this.continuousMode && !this.isSpeaking) {
-            try { this.recognition.start(); } catch (e) {}
-          }
-        }, 300);
-      }
-    };
-
-    this.recognition.onresult = (event) => {
-      if (this.isSpeaking) {
-        // Prevent hearing itself
-        return;
-      }
-
-      const results = event.results;
-      const latest = results[results.length - 1];
-      if (latest && latest[0]) {
-        const transcript = latest[0].transcript.trim();
-        if (transcript) {
-          console.log("Transcribed speech:", transcript);
-          this.handleTranscript(transcript);
-        }
-      }
-    };
+    // Single system-wide speech recognition is managed exclusively by the native macOS CoreAudio daemon.
+    // In-browser speech recognition is disabled to strictly enforce Requirement 14 (single recognition instance).
+    this.recognition = null;
   }
 
   handleTranscript(transcript) {
@@ -249,62 +180,41 @@ class JarvisVoiceEngine {
   }
 
   speak(text, onFinished) {
-    if (!this.synthesis || this.muted || !text) {
+    if (this.muted || !text) {
       if (onFinished) onFinished();
       return;
     }
 
-    // 1. Temporarily pause microphone recognition to PREVENT HEARING ITSELF
-    this.stopListeningSession();
+    // Cancel any browser speech synthesis to ensure strictly zero audio conflicts
+    if (this.synthesis) {
+      try { this.synthesis.cancel(); } catch (e) {}
+    }
+
     this.isSpeaking = true;
     if (this.onStatusChangeCallback) this.onStatusChangeCallback('speaking');
 
-    // 2. Cancel previous utterances
-    this.synthesis.cancel();
-
-    // 3. Clean markdown and format text
     const cleanText = text.replace(/[*#_`]/g, '').trim();
-    const utterance = new SpeechSynthesisUtterance(cleanText);
 
-    if (this.selectedVoice) {
-      utterance.voice = this.selectedVoice;
-    }
-    utterance.pitch = this.pitch;
-    utterance.rate = this.rate;
-
-    // Retain reference on instance so Chrome GC does not drop it
-    this.activeUtterance = utterance;
-
-    let finished = false;
-    const finishHandler = () => {
-      if (finished) return;
-      finished = true;
-      this.isSpeaking = false;
-      this.activeUtterance = null;
-
-      // 4. AUTOMATIC RESUMPTION: Restart listening after TTS ends
-      if (this.continuousMode) {
-        if (this.onStatusChangeCallback) this.onStatusChangeCallback('listening');
-        this.startListeningSession();
-      } else {
-        if (this.onStatusChangeCallback) this.onStatusChangeCallback('idle');
-      }
-
-      if (onFinished) onFinished();
-    };
-
-    utterance.onend = finishHandler;
-    utterance.onerror = finishHandler;
-
-    // Safety timeout in case browser TTS event hangs
-    const safetyMs = Math.max(2000, Math.min(20000, cleanText.length * 85));
-    setTimeout(() => {
-      if (!finished && this.isSpeaking) {
-        finishHandler();
-      }
-    }, safetyMs);
-
-    this.synthesis.speak(utterance);
+    // Route to single native macOS Daniel voice
+    fetch('/api/system/say', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: cleanText })
+    })
+      .catch((e) => {
+        console.warn("Native TTS error:", e);
+      })
+      .finally(() => {
+        const words = cleanText.split(/\s+/).length;
+        const delayMs = Math.max(1200, Math.min(15000, words * 360));
+        setTimeout(() => {
+          this.isSpeaking = false;
+          if (this.onStatusChangeCallback) {
+            this.onStatusChangeCallback(this.continuousMode ? 'listening' : 'idle');
+          }
+          if (onFinished) onFinished();
+        }, delayMs);
+      });
   }
 
   stopSpeaking() {

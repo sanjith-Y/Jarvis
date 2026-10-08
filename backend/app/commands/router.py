@@ -60,6 +60,7 @@ class CommandRouter:
             prev = clean
             clean = re.sub(r'^(?:now\s+)?(?:i\s+said\s+|i\s+told\s+|i\s+asked\s+|tell\s+|ask\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+)', '', clean).strip()
             clean = re.sub(r'^(?:hey\s+|okay\s+|ok\s+|hi\s+|hello\s+)?(?:jarvis|jarvin|travis|java|javis|jarv)\b[,:\s]*', '', clean).strip()
+            clean = re.sub(r'^(?:hey|okay|ok|hi|hello)\s+', '', clean).strip()
             clean = re.sub(r'^(?:can\s+you\s+(?:please\s+)?|could\s+you\s+(?:please\s+)?|please\s+|would\s+you\s+(?:please\s+)?|will\s+you\s+)', '', clean).strip()
             clean = re.sub(r'^(?:to|now)\s+', '', clean).strip()
             changed = (clean != prev)
