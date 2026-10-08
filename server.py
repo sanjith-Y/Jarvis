@@ -26,6 +26,8 @@ from backend.app.commands.router import command_router
 from backend.app.commands.app_resolver import app_resolver
 from backend.app.commands.youtube_service import youtube_service
 from backend.app.ai.knowledge_engine import knowledge_engine
+from backend.app.commands.context import assistant_context
+from backend.app.voice.listener import native_voice_listener
 
 PORT = int(os.environ.get("PORT", 8088))
 
@@ -133,6 +135,9 @@ class JarvisRequestHandler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/system":
             self._send_json(get_system_telemetry())
             return
+        elif parsed.path == "/api/jarvis/status":
+            self._send_json(assistant_context.get_status())
+            return
         elif parsed.path == "/api/applications/installed":
             apps = app_resolver.list_installed_apps()
             self._send_json({"total": len(apps), "applications": apps})
@@ -152,6 +157,28 @@ class JarvisRequestHandler(http.server.SimpleHTTPRequestHandler):
             data = json.loads(body)
         except Exception:
             data = {}
+
+        # 0. Session Control
+        if parsed.path == "/api/jarvis/activate":
+            native_voice_listener.activate()
+            self._send_json({
+                "success": True,
+                "active": True,
+                "state": "LISTENING",
+                "message": "JARVIS is online. I'm listening, Boss.",
+                "context": assistant_context.get_status()
+            })
+            return
+        elif parsed.path == "/api/jarvis/deactivate":
+            native_voice_listener.deactivate()
+            self._send_json({
+                "success": True,
+                "active": False,
+                "state": "SLEEPING",
+                "message": "Understood, Boss. I'll stand by.",
+                "context": assistant_context.get_status()
+            })
+            return
 
         # 1. Chat & Universal Command Endpoint
         if parsed.path == "/api/chat" or parsed.path == "/api/jarvis/command":
@@ -210,6 +237,13 @@ class JarvisRequestHandler(http.server.SimpleHTTPRequestHandler):
             self._send_json(res)
             return
 
+        # 4B. App Close Endpoint
+        elif parsed.path == "/api/applications/close":
+            name = data.get("name") or data.get("app") or data.get("target") or ""
+            res = app_resolver.close(name)
+            self._send_json(res)
+            return
+
         # 5. YouTube Media Play
         elif parsed.path == "/api/youtube/play":
             query = data.get("query", "")
@@ -222,6 +256,12 @@ class JarvisRequestHandler(http.server.SimpleHTTPRequestHandler):
         elif parsed.path == "/api/youtube/search":
             query = data.get("query", "")
             res = youtube_service.search(query)
+            self._send_json(res)
+            return
+
+        # 6B. YouTube Close
+        elif parsed.path == "/api/youtube/close":
+            res = youtube_service.close_youtube()
             self._send_json(res)
             return
 

@@ -102,33 +102,40 @@ ws_manager = ConnectionManager()
 # --- JARVIS SESSION & COMMAND ROUTING ---
 @router.post("/jarvis/activate")
 async def activate_jarvis():
+    from backend.app.voice.listener import native_voice_listener
+    from backend.app.commands.context import assistant_context
+    native_voice_listener.activate()
     jarvis_session["active"] = True
     jarvis_session["state"] = "LISTENING"
-    msg = f"JARVIS is online. I'm listening, {settings.USER_NAME}."
+    msg = f"JARVIS is online. I'm listening, Boss."
     if settings.ENABLE_VOICE:
         voice_service.speak(msg)
     await ws_manager.broadcast({
         "type": "jarvis_session_update",
-        "session": jarvis_session
+        "session": assistant_context.get_status()
     })
-    return {"success": True, "active": True, "state": "LISTENING", "message": msg}
+    return {"success": True, "active": True, "state": "LISTENING", "message": msg, "context": assistant_context.get_status()}
 
 @router.post("/jarvis/deactivate")
 async def deactivate_jarvis():
+    from backend.app.voice.listener import native_voice_listener
+    from backend.app.commands.context import assistant_context
+    native_voice_listener.deactivate()
     jarvis_session["active"] = False
     jarvis_session["state"] = "SLEEPING"
-    msg = f"Understood, {settings.USER_NAME}. I'll stand by."
+    msg = f"Understood, Boss. I'll stand by."
     if settings.ENABLE_VOICE:
         voice_service.speak(msg)
     await ws_manager.broadcast({
         "type": "jarvis_session_update",
-        "session": jarvis_session
+        "session": assistant_context.get_status()
     })
-    return {"success": True, "active": False, "state": "SLEEPING", "message": msg}
+    return {"success": True, "active": False, "state": "SLEEPING", "message": msg, "context": assistant_context.get_status()}
 
 @router.get("/jarvis/status")
 async def get_jarvis_status():
-    return jarvis_session
+    from backend.app.commands.context import assistant_context
+    return assistant_context.get_status()
 
 @router.post("/jarvis/command")
 async def execute_jarvis_command(req: JarvisCommandRequest):

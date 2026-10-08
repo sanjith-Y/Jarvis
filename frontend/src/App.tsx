@@ -78,12 +78,47 @@ export const App: React.FC = () => {
             if (data.notification?.should_speak && sessionActiveRef.current) {
               speakResponse(data.notification.proactive_message || data.notification.title);
             }
+          } else if (data.type === 'voice_state_update') {
+            if (data.state) {
+              setJarvisState(data.state as JarvisState);
+              if (data.state === 'LISTENING') {
+                setSessionActive(true);
+                sessionActiveRef.current = true;
+              } else if (data.state === 'SLEEPING') {
+                setSessionActive(false);
+                sessionActiveRef.current = false;
+              }
+            }
+          } else if (data.type === 'command_activity') {
+            const cmd = data.command;
+            const res = data.result;
+            if (cmd) {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: Date.now().toString(),
+                  sender: 'user',
+                  text: cmd,
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                },
+                {
+                  id: (Date.now() + 1).toString(),
+                  sender: 'jarvis',
+                  text: res?.message || 'Directive executed, Boss.',
+                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  toolAction: res?.tool || res?.intent,
+                  toolStatus: res?.success ? 'COMPLETED' : 'FAILED'
+                }
+              ]);
+            }
           } else if (data.type === 'jarvis_session_update') {
             if (data.session) {
-              setSessionActive(data.session.active);
-              sessionActiveRef.current = data.session.active;
-              if (!data.session.active) {
+              setSessionActive(data.session.isActive || data.session.active);
+              sessionActiveRef.current = data.session.isActive || data.session.active;
+              if (!data.session.isActive && !data.session.active) {
                 setJarvisState('SLEEPING');
+              } else {
+                setJarvisState((data.session.currentState as JarvisState) || 'LISTENING');
               }
             }
           }
@@ -110,6 +145,13 @@ export const App: React.FC = () => {
   useEffect(() => {
     api.getSystemStatus().then(setMetrics).catch(() => {});
     api.getUnreadCount().then((res) => setUnreadCount(res.count)).catch(() => {});
+    api.getJarvisStatus().then((status) => {
+      if (status && status.isActive) {
+        setSessionActive(true);
+        sessionActiveRef.current = true;
+        setJarvisState((status.currentState as JarvisState) || 'LISTENING');
+      }
+    }).catch(() => {});
   }, []);
 
   // Helper: Start / Stop listening safely
@@ -215,11 +257,8 @@ export const App: React.FC = () => {
       };
 
       recognitionRef.current = recognition;
-
-      // Start recognition in background to listen for wake words or active commands
-      try {
-        recognition.start();
-      } catch (e) {}
+      // Persistent system-wide CoreAudio speech recognition is managed by the native Python background service.
+      // Browser recognition is kept unstarted to strictly enforce Requirement 14 (single recognition instance).
     }
   }, [userName]);
 
@@ -320,19 +359,15 @@ export const App: React.FC = () => {
 
   // 6. Manual Session Toggle Button
   const toggleVoice = async () => {
-    if (!recognitionRef.current) {
-      alert("Speech recognition not supported in this browser. Please use Chrome, Edge, or Safari.");
-      return;
-    }
-
     if (sessionActiveRef.current) {
       // Deactivate session -> SLEEPING
       setSessionActive(false);
       sessionActiveRef.current = false;
       stopListening();
-      speakResponse(`Understood, ${userName}. I'll stand by.`, () => {
-        setJarvisState('SLEEPING');
-      });
+      try {
+        await api.deactivateJarvis();
+      } catch (e) {}
+      setJarvisState('SLEEPING');
     } else {
       // 1. Explicitly request microphone access if needed
       try {
@@ -347,15 +382,10 @@ export const App: React.FC = () => {
       // 2. Activate session -> LISTENING
       setSessionActive(true);
       sessionActiveRef.current = true;
-      setJarvisState('ACTIVATING');
-
-      // 3. Spoken greeting: "JARVIS online. I'm listening, Boss."
-      speakResponse(`JARVIS online. I'm listening, ${userName}.`, () => {
-        if (sessionActiveRef.current) {
-          setJarvisState('LISTENING');
-          startListening();
-        }
-      });
+      setJarvisState('LISTENING');
+      try {
+        await api.activateJarvis();
+      } catch (e) {}
     }
   };
 

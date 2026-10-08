@@ -177,6 +177,30 @@ class ApplicationResolver:
         """Alias for resolveApplication."""
         return self.resolveApplication(query)
 
+    def is_running(self, app_name: str) -> bool:
+        """Checks if application process is currently running on macOS."""
+        if self.os_type != "Darwin":
+            return False
+        clean = app_name.strip()
+        script = f'''
+        tell application "System Events"
+            set isRunning to (name of every application process) contains "{clean}"
+        end tell
+        return isRunning
+        '''
+        try:
+            res = subprocess.check_output(["osascript", "-e", script], text=True, stderr=subprocess.DEVNULL).strip()
+            return res == "true"
+        except Exception:
+            pass
+
+        # Fallback process check via exact name pgrep
+        try:
+            out = subprocess.check_output(["pgrep", "-x", clean], text=True, stderr=subprocess.DEVNULL)
+            return bool(out.strip())
+        except Exception:
+            return False
+
     def launch(self, query: str) -> Dict[str, Any]:
         """
         Validates and safely launches an application on macOS without shell=True.
@@ -211,6 +235,13 @@ class ApplicationResolver:
             else:
                 subprocess.Popen([app_path])
 
+            # Update central context tracking
+            try:
+                from backend.app.commands.context import assistant_context
+                assistant_context.record_opened_app(app_name)
+            except Exception:
+                pass
+
             return {
                 "success": True,
                 "not_installed": False,
@@ -229,42 +260,88 @@ class ApplicationResolver:
             }
 
     def close(self, query: str) -> Dict[str, Any]:
-        """Safely quits an application using osascript or killall."""
+        """Safely quits an application using osascript or killall with truthful verification."""
+        clean_target = query.strip()
+        # If user targeted YouTube specifically
+        if clean_target.lower() == "youtube":
+            try:
+                from backend.app.commands.youtube_service import youtube_service
+                return youtube_service.close_youtube()
+            except Exception:
+                pass
+
+        # Guard: Never terminate JARVIS or Python assistant process
+        if clean_target.lower() in ["jarvis", "jarvis ai", "python", "python3", "uvicorn", "assistant"]:
+            return {
+                "success": False,
+                "is_assistant": True,
+                "app_name": "JARVIS",
+                "message": "Boss, I am your background assistant and remain active. To put me to sleep, say 'Jarvis, go to sleep'."
+            }
+
         found = self.resolveApplication(query)
         app_name = found[0] if found else query.strip().title()
 
         if self.os_type == "Darwin":
+            # 1. Check if the application is actually running
+            if not self.is_running(app_name):
+                return {
+                    "success": False,
+                    "not_running": True,
+                    "app_name": app_name,
+                    "message": f"Boss, {app_name} isn't currently running."
+                }
+
+            # 2. Graceful quit via AppleScript
             try:
-                # Graceful quit via AppleScript
                 apple_script = f'tell application "{app_name}" to quit'
-                subprocess.run(["osascript", "-e", apple_script], capture_output=True, timeout=5)
+                subprocess.run(["osascript", "-e", apple_script], capture_output=True, timeout=3)
+            except Exception:
+                pass
+
+            # 3. Verify if closed
+            import time
+            time.sleep(0.4)
+            if not self.is_running(app_name):
+                try:
+                    from backend.app.commands.context import assistant_context
+                    assistant_context.record_closed_target(app_name)
+                except Exception:
+                    pass
                 return {
                     "success": True,
                     "app_name": app_name,
-                    "message": f"Closing {app_name}, Boss."
+                    "message": f"Closed {app_name}, Boss."
                 }
-            except Exception:
-                # Force kill if needed
-                try:
-                    subprocess.run(["killall", app_name], capture_output=True, timeout=5)
+
+            # 4. Force kill fallback if graceful quit did not terminate
+            try:
+                subprocess.run(["killall", app_name], capture_output=True, timeout=3)
+                time.sleep(0.3)
+                if not self.is_running(app_name):
+                    try:
+                        from backend.app.commands.context import assistant_context
+                        assistant_context.record_closed_target(app_name)
+                    except Exception:
+                        pass
                     return {
                         "success": True,
                         "app_name": app_name,
                         "message": f"Closed {app_name}, Boss."
                     }
-                except Exception as e:
-                    return {
-                        "success": False,
-                        "app_name": app_name,
-                        "error": str(e),
-                        "message": f"Failed to close {app_name}, Boss."
-                    }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "app_name": app_name,
+                    "error": str(e),
+                    "message": f"Sorry, Boss. Failed to close {app_name}."
+                }
 
-        return {
-            "success": False,
-            "app_name": app_name,
-            "message": f"Closing applications is only supported on macOS, Boss."
-        }
+            return {
+                "success": False,
+                "app_name": app_name,
+                "message": f"Sorry, Boss. Could not terminate {app_name}."
+            }
 
     def list_installed_apps(self) -> List[str]:
         self.refresh_cache()

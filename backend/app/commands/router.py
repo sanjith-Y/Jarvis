@@ -1,6 +1,15 @@
 """
 Universal Command Router
 Routes user voice and text directives to structured intents and invokes CommandExecutor.
+Enforces intent priorities:
+1. OPEN_APPLICATION
+2. CLOSE_APPLICATION
+3. YOUTUBE_MEDIA
+4. YOUTUBE_SEARCH
+5. OPEN_WEBSITE
+6. SYSTEM_COMMAND
+7. OTHER REAL ACTIONS
+8. GENERAL_CHAT (always last fallback)
 """
 
 import re
@@ -8,6 +17,8 @@ from typing import Dict, Any, Optional
 from backend.app.commands.media_parser import media_intent_parser
 from backend.app.commands.app_resolver import app_resolver
 from backend.app.commands.executor import command_executor
+from backend.app.commands.youtube_service import youtube_service
+from backend.app.commands.context import assistant_context
 from backend.app.notifications.engine import notification_engine
 from backend.app.reminders.manager import reminder_manager
 from backend.app.memory.manager import memory_manager
@@ -19,10 +30,25 @@ class CommandRouter:
     def __init__(self):
         self.user_name = "Boss"
 
+    def _dispatch_result(self, raw_text: str, text: str, clean: str, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Logs telemetry to assistant_context and returns result."""
+        assistant_context.lastCommand = clean
+        assistant_context.log_debug_entry({
+            "voice_received": raw_text,
+            "transcript": text,
+            "normalized": clean,
+            "intent": result.get("intent"),
+            "target": result.get("target") or result.get("query"),
+            "action": result.get("tool"),
+            "action_result": "SUCCESS" if result.get("success") else ("NOT_RUNNING" if result.get("not_running") else ("NOT_INSTALLED" if result.get("not_installed") else "FAILED")),
+            "response": result.get("message")
+        })
+        return result
+
     def route(self, raw_text: str) -> Dict[str, Any]:
         """
         Receives raw transcript or text input.
-        Normalizes, classifies intent, and executes via CommandExecutor.
+        Normalizes, classifies intent, updates context, and executes via CommandExecutor.
         """
         text = raw_text.strip()
         lower = text.lower()
@@ -41,35 +67,118 @@ class CommandRouter:
         # -------------------------------------------------------------
         # 1. SLEEP & DEACTIVATE COMMANDS
         # -------------------------------------------------------------
-        if any(clean == s or clean.startswith(s) for s in [
-            "stop listening", "stop jarvis", "go to sleep", "sleep jarvis",
-            "deactivate jarvis", "turn off listening", "that's all", "good night jarvis",
-            "standby", "enter standby"
-        ]):
-            return {
+        sleep_triggers = [
+            "sleep", "go to sleep", "stop listening", "stop jarvis", "sleep jarvis",
+            "deactivate jarvis", "deactivate", "turn off listening", "turn off",
+            "that's all", "that will be all", "good night jarvis", "good night",
+            "standby", "enter standby", "shut down", "stop"
+        ]
+        if any(clean == s or clean.startswith(s) for s in sleep_triggers):
+            assistant_context.set_active(False)
+            return self._dispatch_result(raw_text, text, clean, {
                 "intent": "SLEEP",
                 "tool": "session_control",
                 "is_sleep": True,
                 "success": True,
                 "message": "Understood, Boss. I'll stand by.",
                 "stay_active": False
-            }
+            })
 
         # -------------------------------------------------------------
         # 2. WAKE WORD ACKNOWLEDGMENT ("Jarvis", "Hey Jarvis")
         # -------------------------------------------------------------
         if clean in ["", "wake up", "are you there", "hello", "hi"]:
-            return {
+            assistant_context.set_active(True)
+            return self._dispatch_result(raw_text, text, clean, {
                 "intent": "WAKE",
                 "tool": "session_control",
                 "is_wake": True,
                 "success": True,
                 "message": "Yes, Boss?",
                 "stay_active": True
-            }
+            })
 
         # -------------------------------------------------------------
-        # 3. APPLICATION COMMANDS (OPEN & LAUNCH)
+        # 3. CLOSE APPLICATION & CONTEXTUAL CLOSE COMMANDS (Priority 2)
+        # e.g. "Close WhatsApp", "Close Chrome", "Close YouTube", "Close it", "Close the app", "Quit it"
+        # -------------------------------------------------------------
+        close_match = re.search(r"^(?:close|quit|exit|terminate|kill)\s+(?:the\s+|my\s+)?(.+)", clean)
+        contextual_close = clean in ["close it", "close the app", "quit it", "exit it", "close that", "quit the app", "exit the app"]
+
+        if close_match or contextual_close:
+            raw_target = close_match.group(1).strip() if close_match else ""
+            target = re.sub(r'\s+(?:app|application)$', '', raw_target, flags=re.IGNORECASE).strip()
+            target = re.sub(r'\s+(?:for\s+me|please)[?.!]*$', '', target, flags=re.IGNORECASE).strip()
+            target = re.sub(r'[?.!]+$', '', target).strip()
+
+            # Contextual resolution if user said "close it", "close the app", etc.
+            if contextual_close or target in ["it", "this", "the app", "that", "app"]:
+                candidate = assistant_context.get_close_candidate()
+                if candidate:
+                    target = candidate
+                else:
+                    return self._dispatch_result(raw_text, text, clean, {
+                        "intent": "CLOSE_APPLICATION",
+                        "tool": "application_closer",
+                        "target": None,
+                        "executed": True,
+                        "success": False,
+                        "message": "There is no active application to close, Boss.",
+                        "stay_active": True
+                    })
+
+            # Check if user specifically requested closing YouTube
+            if target.lower() == "youtube":
+                exec_res = command_executor.executeCloseYouTube()
+                assistant_context.record_closed_target("YouTube")
+                return self._dispatch_result(raw_text, text, clean, {
+                    "intent": "CLOSE_APPLICATION",
+                    "tool": "youtube_closer",
+                    "target": "YouTube",
+                    "executed": True,
+                    "success": exec_res["success"],
+                    "message": exec_res["message"],
+                    "data": exec_res,
+                    "stay_active": True
+                })
+
+            # Close application by resolved name
+            exec_res = command_executor.executeCloseApplication(target)
+            if exec_res["success"]:
+                assistant_context.record_closed_target(exec_res.get("app_name", target))
+
+            return self._dispatch_result(raw_text, text, clean, {
+                "intent": "CLOSE_APPLICATION",
+                "tool": "application_closer",
+                "target": exec_res.get("app_name", target.title()),
+                "executed": True,
+                "success": exec_res["success"],
+                "not_running": exec_res.get("not_running", False),
+                "message": exec_res["message"],
+                "data": exec_res,
+                "stay_active": True
+            })
+
+        # -------------------------------------------------------------
+        # 4. YOUTUBE HOME COMMAND (Requirement 8)
+        # "Open YouTube" -> opens YouTube home page, no search
+        # -------------------------------------------------------------
+        if clean in ["open youtube", "launch youtube", "start youtube", "open you tube", "launch you tube"]:
+            exec_res = youtube_service.open_youtube()
+            assistant_context.record_youtube_target()
+            return self._dispatch_result(raw_text, text, clean, {
+                "intent": "OPEN_APPLICATION",
+                "tool": "youtube_launcher",
+                "target": "YouTube",
+                "executed": True,
+                "success": exec_res["success"],
+                "message": "Of course, Boss. Opening YouTube.",
+                "data": exec_res,
+                "stay_active": True
+            })
+
+        # -------------------------------------------------------------
+        # 5. APPLICATION COMMANDS (OPEN & LAUNCH)
         # -------------------------------------------------------------
         open_app_match = re.search(r"^(?:open|launch|start|run|bring\s+up|show\s+me)\s+(?:the\s+|my\s+)?(.+)", clean)
         if open_app_match:
@@ -83,7 +192,8 @@ class CommandRouter:
             if target.startswith("youtube and search") or target.startswith("youtube to search"):
                 search_query = re.sub(r'^youtube\s+(?:and|to)\s+search\s+(?:for\s+)?', '', target).strip()
                 exec_res = command_executor.executeYouTubeSearch(search_query)
-                return {
+                assistant_context.record_youtube_target(search_query)
+                return self._dispatch_result(raw_text, text, clean, {
                     "intent": "YOUTUBE_SEARCH",
                     "tool": "youtube_search",
                     "query": search_query,
@@ -92,23 +202,27 @@ class CommandRouter:
                     "message": exec_res["message"],
                     "data": exec_res,
                     "stay_active": True
-                }
+                })
 
-            if target == "youtube":
-                exec_res = command_executor.executeYouTubeMedia("", mediaType="VIDEO")
-                return {
+            if target.lower() in ["youtube", "you tube"]:
+                exec_res = youtube_service.open_youtube()
+                assistant_context.record_youtube_target()
+                return self._dispatch_result(raw_text, text, clean, {
                     "intent": "OPEN_APPLICATION",
                     "target": "YouTube",
                     "executed": True,
                     "success": exec_res["success"],
-                    "message": "Certainly, Boss. Opening YouTube.",
+                    "message": "Of course, Boss. Opening YouTube.",
                     "data": exec_res,
                     "stay_active": True
-                }
+                })
 
             # Attempt universal application resolution
             exec_res = command_executor.executeOpenApplication(target)
-            return {
+            if exec_res["success"]:
+                assistant_context.record_opened_app(exec_res.get("app_name", target))
+
+            return self._dispatch_result(raw_text, text, clean, {
                 "intent": "OPEN_APPLICATION",
                 "tool": "application_launcher",
                 "target": exec_res.get("app_name", target.title()),
@@ -118,9 +232,9 @@ class CommandRouter:
                 "message": exec_res["message"],
                 "data": exec_res,
                 "stay_active": True
-            }
+            })
 
-        # 3B. DIRECT / BARE APPLICATION NAME (e.g. "instagram", "whatsapp", "terminal", "calculator")
+        # 5B. DIRECT / BARE APPLICATION NAME (e.g. "instagram", "whatsapp", "terminal", "calculator")
         bare_candidate = re.sub(r'\s+(?:app|application)$', '', clean).strip()
         bare_candidate = re.sub(r'^(?:the|my)\s+', '', bare_candidate).strip()
         bare_candidate = re.sub(r'[?.!]+$', '', bare_candidate).strip()
@@ -136,7 +250,10 @@ class CommandRouter:
             found_app = app_resolver.find_application(bare_candidate)
             if found_app:
                 exec_res = command_executor.executeOpenApplication(bare_candidate)
-                return {
+                if exec_res["success"]:
+                    assistant_context.record_opened_app(exec_res.get("app_name", bare_candidate))
+
+                return self._dispatch_result(raw_text, text, clean, {
                     "intent": "OPEN_APPLICATION",
                     "tool": "application_launcher",
                     "target": exec_res.get("app_name", bare_candidate.title()),
@@ -146,10 +263,10 @@ class CommandRouter:
                     "message": exec_res["message"],
                     "data": exec_res,
                     "stay_active": True
-                }
+                })
 
         # -------------------------------------------------------------
-        # 4. MEDIA INTENT PARSER (MUSIC, MOVIE_SONGS, COMEDY, VIDEO, YOUTUBE_SEARCH)
+        # 6. MEDIA INTENT PARSER (MUSIC, MOVIE_SONGS, COMEDY, VIDEO, YOUTUBE_SEARCH)
         # -------------------------------------------------------------
         media_intent = media_intent_parser.parse(clean)
         if media_intent:
@@ -158,19 +275,21 @@ class CommandRouter:
 
             if media_type == "YOUTUBE_SEARCH":
                 if media_intent.get("isOpenOnly"):
-                    exec_res = command_executor.executeYouTubeMedia("", mediaType="VIDEO")
-                    return {
+                    exec_res = youtube_service.open_youtube()
+                    assistant_context.record_youtube_target()
+                    return self._dispatch_result(raw_text, text, clean, {
                         "intent": "OPEN_APPLICATION",
                         "target": "YouTube",
                         "executed": True,
                         "success": exec_res["success"],
-                        "message": "Certainly, Boss. Opening YouTube.",
+                        "message": "Of course, Boss. Opening YouTube.",
                         "data": exec_res,
                         "stay_active": True
-                    }
+                    })
                 else:
                     exec_res = command_executor.executeYouTubeSearch(query)
-                    return {
+                    assistant_context.record_youtube_target(query)
+                    return self._dispatch_result(raw_text, text, clean, {
                         "intent": "YOUTUBE_SEARCH",
                         "tool": "youtube_search",
                         "query": query,
@@ -179,11 +298,12 @@ class CommandRouter:
                         "message": exec_res["message"],
                         "data": exec_res,
                         "stay_active": True
-                    }
+                    })
             else:
                 # MUSIC, MOVIE_SONGS, COMEDY, VIDEO
                 exec_res = command_executor.executeYouTubeMedia(query, mediaType=media_type)
-                return {
+                assistant_context.record_youtube_target(query)
+                return self._dispatch_result(raw_text, text, clean, {
                     "intent": "YOUTUBE_MEDIA",
                     "tool": "youtube_media",
                     "query": query,
@@ -193,10 +313,10 @@ class CommandRouter:
                     "message": exec_res["message"],
                     "data": exec_res,
                     "stay_active": True
-                }
+                })
 
         # -------------------------------------------------------------
-        # 5. HARDWARE & SYSTEM STATUS COMMANDS
+        # 7. HARDWARE & SYSTEM STATUS COMMANDS
         # -------------------------------------------------------------
         if any(kw in clean for kw in [
             "cpu usage", "what's my cpu", "what is my cpu", "ram usage", "memory usage",
@@ -205,7 +325,7 @@ class CommandRouter:
         ]):
             cmd_type = "cpu" if "cpu" in clean else ("battery" if "battery" in clean else ("ram" if "ram" in clean or "memory" in clean else "all"))
             exec_res = command_executor.executeSystemCommand(cmd_type)
-            return {
+            return self._dispatch_result(raw_text, text, clean, {
                 "intent": "SYSTEM_STATUS",
                 "tool": "system_status",
                 "executed": True,
@@ -213,10 +333,10 @@ class CommandRouter:
                 "message": exec_res["message"],
                 "data": exec_res.get("metrics"),
                 "stay_active": True
-            }
+            })
 
         # -------------------------------------------------------------
-        # 6. NOTIFICATION COMMANDS
+        # 8. NOTIFICATION COMMANDS
         # -------------------------------------------------------------
         if any(kw in clean for kw in [
             "check notifications", "check my notifications", "any notifications",
@@ -235,7 +355,7 @@ class CommandRouter:
                 total_cnt = sum_data.get("total", 0)
                 reply = f"Certainly, Boss. You have {total_cnt} notifications. {sum_data.get('summary', '')}"
 
-            return {
+            return self._dispatch_result(raw_text, text, clean, {
                 "intent": "CHECK_NOTIFICATIONS",
                 "tool": "notification_check",
                 "executed": True,
@@ -243,14 +363,14 @@ class CommandRouter:
                 "message": reply,
                 "data": sum_data,
                 "stay_active": True
-            }
+            })
 
         # -------------------------------------------------------------
-        # 7. SCREEN ANALYSIS COMMANDS
+        # 9. SCREEN ANALYSIS COMMANDS
         # -------------------------------------------------------------
         if any(kw in clean for kw in ["analyze screen", "analyze my screen", "what's on my screen", "read my screen", "look at my screen"]):
             screen_res = screen_vision.analyze_current_screen()
-            return {
+            return self._dispatch_result(raw_text, text, clean, {
                 "intent": "SCREEN_ANALYSIS",
                 "tool": "screen_vision",
                 "executed": True,
@@ -258,16 +378,16 @@ class CommandRouter:
                 "message": screen_res.get("analysis", "Screen analyzed, Boss."),
                 "data": screen_res,
                 "stay_active": True
-            }
+            })
 
         # -------------------------------------------------------------
-        # 8. WEB SEARCH COMMANDS
+        # 10. WEB SEARCH COMMANDS
         # -------------------------------------------------------------
         web_search_match = re.search(r"^(?:search\s+the\s+web\s+for|search\s+web\s+for|google|look\s+up)\s+(.+)", clean)
         if web_search_match:
             search_query = web_search_match.group(1).strip()
             search_res = web_search_engine.search(search_query)
-            return {
+            return self._dispatch_result(raw_text, text, clean, {
                 "intent": "SEARCH_WEB",
                 "tool": "web_search",
                 "query": search_query,
@@ -276,13 +396,13 @@ class CommandRouter:
                 "message": search_res.get("summary", f"Here is what I found for {search_query}, Boss."),
                 "data": search_res,
                 "stay_active": True
-            }
+            })
 
         # -------------------------------------------------------------
-        # 9. GENERAL CHAT / KNOWLEDGE QUESTIONS (e.g. "Explain artificial intelligence", "Who is Elon Musk")
+        # 11. GENERAL CHAT / KNOWLEDGE QUESTIONS (Always the LAST fallback)
         # -------------------------------------------------------------
         answer = knowledge_engine.answer_query(text)
-        return {
+        return self._dispatch_result(raw_text, text, clean, {
             "intent": "GENERAL_CHAT",
             "tool": "chat_engine",
             "query": text,
@@ -290,7 +410,7 @@ class CommandRouter:
             "success": True,
             "message": answer,
             "stay_active": True
-        }
+        })
 
     def route_command(self, raw_text: str) -> Dict[str, Any]:
         """Alias for route."""

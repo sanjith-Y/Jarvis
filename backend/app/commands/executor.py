@@ -54,6 +54,27 @@ class CommandExecutor:
             "message": res["message"]
         }
 
+    def executeCloseApplication(self, target: str) -> Dict[str, Any]:
+        """
+        Safely closes / terminates an application process on macOS with truthful verification.
+        """
+        res = app_resolver.close(target)
+        status = "COMPLETED" if res["success"] else ("NOT_RUNNING" if res.get("not_running") else "FAILED")
+        self.record_command(f"Close {target}", "close_app", SecurityLevel.SAFE, status, res["message"])
+        return {
+            "success": res["success"],
+            "not_running": res.get("not_running", False),
+            "app_name": res.get("app_name", target),
+            "message": res["message"]
+        }
+
+    def executeCloseYouTube(self) -> Dict[str, Any]:
+        """Safely closes YouTube tabs or views."""
+        res = youtube_service.close_youtube()
+        status = "COMPLETED" if res["success"] else "FAILED"
+        self.record_command("Close YouTube", "close_youtube", SecurityLevel.SAFE, status, res["message"])
+        return res
+
     def executeYouTubeSearch(self, query: str) -> Dict[str, Any]:
         """Executes a YouTube search query."""
         res = youtube_service.search(query)

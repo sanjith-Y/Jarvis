@@ -111,6 +111,7 @@ class JarvisApplication {
     if (this.isActive) {
       // Deactivate JARVIS
       this.isActive = false;
+      try { fetch('/api/jarvis/deactivate', { method: 'POST' }); } catch (e) {}
       window.JarvisVoice.stopContinuous();
       this.updateState('sleeping');
       if (this.btnVoice) {
@@ -122,6 +123,7 @@ class JarvisApplication {
     } else {
       // ACTIVATE JARVIS (Requirements 2, 5)
       this.isActive = true;
+      try { fetch('/api/jarvis/activate', { method: 'POST' }); } catch (e) {}
       if (this.btnVoice) {
         this.btnVoice.classList.add('active');
         this.btnVoice.innerHTML = '<i class="fas fa-microphone-slash"></i> STOP LISTENING';

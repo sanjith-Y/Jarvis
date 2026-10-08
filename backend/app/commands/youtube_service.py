@@ -120,7 +120,101 @@ class YouTubeService:
         return {
             "success": opened,
             "url": "https://www.youtube.com",
-            "message": "Certainly, Boss. Opening YouTube." if opened else "Sorry, Boss. Could not open YouTube."
+            "message": "Of course, Boss. Opening YouTube." if opened else "Sorry, Boss. Could not open YouTube."
         }
+
+    def close_youtube(self) -> Dict[str, Any]:
+        """
+        Safely closes YouTube tabs across running browsers on macOS without quitting entire browser windows.
+        """
+        if self.os_type != "Darwin":
+            return {"success": False, "message": "Closing YouTube is only supported on macOS, Boss."}
+
+        apple_script = '''
+        tell application "System Events"
+            set runningApps to name of every application process
+        end tell
+
+        set closedAny to false
+
+        if runningApps contains "Google Chrome" then
+            try
+                tell application "Google Chrome"
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            if URL of t contains "youtube.com" then
+                                close t
+                                set closedAny to true
+                            end if
+                        end repeat
+                    end repeat
+                end tell
+            end try
+        end if
+
+        if runningApps contains "Safari" then
+            try
+                tell application "Safari"
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            if URL of t contains "youtube.com" then
+                                close t
+                                set closedAny to true
+                            end if
+                        end repeat
+                    end repeat
+                end tell
+            end try
+        end if
+
+        if runningApps contains "Brave Browser" then
+            try
+                tell application "Brave Browser"
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            if URL of t contains "youtube.com" then
+                                close t
+                                set closedAny to true
+                            end if
+                        end repeat
+                    end repeat
+                end tell
+            end try
+        end if
+
+        if runningApps contains "Arc" then
+            try
+                tell application "Arc"
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            if URL of t contains "youtube.com" then
+                                close t
+                                set closedAny to true
+                            end if
+                        end repeat
+                    end repeat
+                end tell
+            end try
+        end if
+
+        return closedAny
+        '''
+        try:
+            res = subprocess.run(["osascript", "-e", apple_script], capture_output=True, text=True, timeout=5)
+            was_closed = res.stdout.strip() == "true"
+            msg = "YouTube tab closed, Boss." if was_closed else "YouTube is closed, Boss."
+            return {
+                "success": True,
+                "target": "YouTube",
+                "closed": was_closed,
+                "message": msg
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "target": "YouTube",
+                "error": str(e),
+                "message": "Sorry, Boss. Failed to close YouTube."
+            }
 
 youtube_service = YouTubeService()

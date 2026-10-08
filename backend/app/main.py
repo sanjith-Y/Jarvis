@@ -42,9 +42,37 @@ async def lifespan(app: FastAPI):
     print(f"⚡ J.A.R.V.I.S. ONLINE. Interface: http://{settings.HOST}:{settings.PORT}")
     print("=" * 60)
 
+    # Start Native System-Wide Background Voice Listener
+    from backend.app.voice.listener import native_voice_listener
+    loop = asyncio.get_running_loop()
+
+    def on_voice_cmd(data):
+        asyncio.run_coroutine_threadsafe(
+            ws_manager.broadcast({
+                "type": "command_activity",
+                "command": data.get("transcript"),
+                "result": data.get("result")
+            }),
+            loop
+        )
+
+    def on_state_chg(state):
+        asyncio.run_coroutine_threadsafe(
+            ws_manager.broadcast({
+                "type": "voice_state_update",
+                "state": state
+            }),
+            loop
+        )
+
+    native_voice_listener.on_command_executed = on_voice_cmd
+    native_voice_listener.on_state_change = on_state_chg
+    native_voice_listener.start()
+
+    # Initial boot greeting via speech if enabled
     # Initial boot greeting via speech if enabled
     if settings.ENABLE_VOICE:
-        voice_service.speak(f"Good evening {settings.USER_NAME}. All systems are operational.")
+        voice_service.speak("All systems are operational, Boss.")
 
     global background_task
     background_task = asyncio.create_task(system_telemetry_loop())
@@ -52,6 +80,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    native_voice_listener.stop()
     if background_task:
         background_task.cancel()
     print("J.A.R.V.I.S. Core Offline.")
@@ -77,8 +106,20 @@ screenshots_dir = DATA_DIR / "screenshots"
 screenshots_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/screenshots", StaticFiles(directory=str(screenshots_dir)), name="screenshots")
 
+# Mount static HUD assets if present
+static_dir = Path(__file__).resolve().parent.parent.parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
 # Include API Router
 app.include_router(api_router)
+
+# HUD route
+from fastapi.responses import FileResponse
+@app.get("/hud")
+async def get_hud():
+    hud_file = Path(__file__).resolve().parent.parent.parent / "index.html"
+    return FileResponse(str(hud_file))
 
 # WebSocket Endpoint
 @app.websocket("/ws")
