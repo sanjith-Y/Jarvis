@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   
   <!-- Core Stylesheet -->
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v=3.1">
 </head>
 <body>
 
@@ -204,6 +204,104 @@
 
     </section>
 
+    <!-- RIGHT PANEL: SUBSYSTEM MATRIX & ACCESS ENCLAVE -->
+    <aside class="hud-panel subsystem-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <i class="fas fa-shield-alt"></i> SUBSYSTEM MATRIX
+        </div>
+        <div class="panel-badge">SEC.CORE</div>
+      </div>
+      <div class="panel-body subsystem-widget-group">
+        
+        <!-- Security Enclave & Protocols -->
+        <div class="telemetry-card">
+          <div class="card-title-row">
+            <span class="card-title"><i class="fas fa-shield-halved"></i> SECURITY ENCLAVE</span>
+            <span class="card-val-badge">ENFORCED</span>
+          </div>
+          <div class="stat-grid-2">
+            <div class="stat-subitem">
+              <div class="label">PROTOCOL</div>
+              <div class="num" style="font-size: 11px; color: var(--cyan-glow);">MARK VII</div>
+            </div>
+            <div class="stat-subitem">
+              <div class="label">DEFCON STATE</div>
+              <div class="num" style="font-size: 11px; color: var(--green-cyber);">NOMINAL // LVL 1</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Neural Speech Synthesis & Audio Engine -->
+        <div class="telemetry-card">
+          <div class="card-title-row">
+            <span class="card-title"><i class="fas fa-wave-square"></i> SPEECH SYNTHESIS</span>
+            <span class="card-val-badge">ACTIVE</span>
+          </div>
+          <div class="stat-grid-2">
+            <div class="stat-subitem">
+              <div class="label">VOICE PROFILE</div>
+              <div class="num" style="font-size: 11px; color: #fff;">DANIEL (MALE)</div>
+            </div>
+            <div class="stat-subitem">
+              <div class="label">AUDIO BRIDGE</div>
+              <div class="num" style="font-size: 11px; color: var(--cyan-glow);">macOS CoreAudio</div>
+            </div>
+          </div>
+          <div style="margin-top: 8px; font-size: 11px; color: var(--text-dim); line-height: 1.4;">
+            Native macOS British butler synthesizer active. Single voice protocol enforced.
+          </div>
+        </div>
+
+        <!-- Subsystem Readiness & Health -->
+        <div class="telemetry-card">
+          <div class="card-title-row">
+            <span class="card-title"><i class="fas fa-microchip"></i> SUBSYSTEM READINESS</span>
+            <span class="card-val-badge">100% READY</span>
+          </div>
+          <div class="subsystem-readiness-list">
+            <div class="subsystem-readiness-row">
+              <span><i class="fas fa-microphone"></i> Voice Ear</span>
+              <span class="badge-status-online">ACTIVE</span>
+            </div>
+            <div class="subsystem-readiness-row">
+              <span><i class="fas fa-terminal"></i> Command Router</span>
+              <span class="badge-status-online">ARMED</span>
+            </div>
+            <div class="subsystem-readiness-row">
+              <span><i class="fas fa-rocket"></i> App Resolver</span>
+              <span class="badge-status-online">ONLINE</span>
+            </div>
+            <div class="subsystem-readiness-row">
+              <span><i class="fab fa-youtube"></i> YouTube Player</span>
+              <span class="badge-status-online">READY</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Rapid Directives (Desktop Actions) -->
+        <div class="telemetry-card">
+          <div class="card-title-row">
+            <span class="card-title"><i class="fas fa-bolt"></i> RAPID DIRECTIVES</span>
+          </div>
+          <div class="quick-launcher-grid">
+            <button class="btn-hud-app" onclick="window.JarvisApp.handleUserCommand('open terminal')">
+              <i class="fas fa-terminal"></i> Terminal
+            </button>
+            <button class="btn-hud-app" onclick="window.JarvisApp.handleUserCommand('open chrome')">
+              <i class="fab fa-chrome"></i> Chrome
+            </button>
+            <button class="btn-hud-app" onclick="window.JarvisApp.handleUserCommand('play love songs on youtube')">
+              <i class="fab fa-youtube"></i> Music
+            </button>
+            <button class="btn-hud-app" onclick="window.JarvisApp.handleUserCommand('system status')">
+              <i class="fas fa-heartbeat"></i> Diagnostics
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </aside>
 
   </main>
 
